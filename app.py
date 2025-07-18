@@ -1,28 +1,47 @@
 import os
 import json
 import streamlit as st
+from processamento import enviar_imagem_para_openai
 from dotenv import load_dotenv
-from converter_pdf_para_png import converter_pdf_em_png
-from processamento import processar_paginas
 
-# ─── Carregar variáveis do ambiente ───
+load_dotenv()
 
-from dotenv import load_dotenv, find_dotenv
-
-load_dotenv(find_dotenv(), override=True)
-
+# Proteção com senha
+import streamlit as st
 senha_correta = os.getenv("APP_PASSWORD")
 
-# 🔒 Proteção por senha
 senha = st.text_input("🔒 Digite a senha para acessar", type="password")
 if senha != senha_correta:
     st.warning("Acesso restrito. Digite a senha correta para continuar.")
     st.stop()
 
-# Configurações da página
+# Configuração inicial
+st.set_page_config(page_title="Linear IA", layout="wide")
+st.title("📘 Linear – Pré-processamento de pdfs")
 
-st.set_page_config(page_title="Teste Linear", layout="wide")
-st.title("📘 Linear – Teste de Marcação de Páginas")
+# Opções disponíveis
+opcoes_livros = {
+    "Literário simples": "litTEX",
+    "Literário ilustrado": "litILUS",
+    "Didático simples": "didSIMP",
+    "Didático complexo": "didCOMP"
+}
+
+livro_escolhido_label = st.selectbox("📚 Escolha um livro para testar:", list(opcoes_livros.keys()))
+livro_id = opcoes_livros[livro_escolhido_label]
+pasta_imagens = os.path.join("livros", livro_id, "imagens")
+
+if not os.path.exists(pasta_imagens):
+    st.error(f"A pasta `{pasta_imagens}` não foi encontrada. Verifique os diretórios locais.")
+    st.stop()
+
+# Descobrir páginas disponíveis
+arquivos_png = sorted([f for f in os.listdir(pasta_imagens) if f.endswith(".png")])
+total_paginas = len(arquivos_png)
+
+st.info(f"O livro contém {total_paginas} páginas.")
+
+intervalo = st.slider("📖 Selecione intervalo de páginas:", min_value=1, max_value=total_paginas, value=(1, min(5, total_paginas)))
 
 # Prompt padrão
 prompt_padrao = """Leia o conteúdo da imagem e retorne em formato JSON estruturado.
@@ -31,44 +50,30 @@ Essa pessoa precisa compreender as informações da página e a relação entre 
 Seu trabalho é reconhecer, interpretar e marcar todos os elementos da página, identificando não apenas o formato visual, mas sua função pedagógica.
 Cada bloco deve ser identificado com um tipo (ex: 'titulo', 'subtitulo', 'paragrafo', 'imagem', 'legenda', 'lista', 'quadro', 'nota'), manter negrito e itálico etc."""
 
-# ──────────────────────────────
-# Seção 1 – Conversão de PDF em imagens
-# ──────────────────────────────
-st.header("1️⃣ Converter PDF para Imagens")
-
-pdf_file = st.file_uploader("📎 Envie o PDF para conversão", type="pdf", key="upload_pdf")
-
-if pdf_file and st.button("▶️ Converter PDF para PNG"):
-    nome_base = pdf_file.name.replace(".pdf", "")
-    pasta_saida = f"./{nome_base}_imagens"
-    os.makedirs(pasta_saida, exist_ok=True)
-
-    st.info("⏳ Convertendo PDF para imagens...")
-    converter_pdf_em_png(pdf_file.read(), pasta_saida, nome_base)
-    st.success(f"✅ Imagens salvas em: `{pasta_saida}`")
-
-# ──────────────────────────────
-# Seção 2 – Processar imagens em JSON
-# ──────────────────────────────
-st.header("2️⃣ Processar Imagens com Linear")
-
-pasta_imagens = st.text_input("📂 Caminho da pasta com imagens", "./nome_do_livro_imagens")
 prompt_usuario = st.text_area("✏️ Prompt personalizado", prompt_padrao, height=250)
 
-if st.button("🚀 Processar Imagens"):
-    if not os.path.exists(pasta_imagens):
-        st.error("❌ Pasta de imagens não encontrada.")
-    else:
-        pasta_jsons = pasta_imagens.rstrip("/\\") + "_json"
-        st.info("⏳ Processando imagens...")
-        processar_paginas(pasta_imagens, pasta_jsons, prompt_usuario)
-        st.success(f"✅ JSONs gerados em: `{pasta_jsons}`")
+# Processamento
+if st.button("🚀 Processar intervalo selecionado"):
+    st.info("Enviando imagens para a OpenAI. Isso pode levar alguns segundos...")
 
-        # Opção para baixar todos os JSONs combinados (apenas leitura)
-        json_completo = {}
-        for arquivo in sorted(os.listdir(pasta_jsons)):
-            if arquivo.endswith(".json"):
-                with open(os.path.join(pasta_jsons, arquivo), "r", encoding="utf-8") as f:
-                    json_completo[arquivo] = json.load(f)
+    resultados = {}
+    for i in range(intervalo[0], intervalo[1]+1):
+        nome_arquivo = f"{livro_id}_p{i:03}.png"
+        caminho = os.path.join(pasta_imagens, nome_arquivo)
 
-        st.download_button("⬇️ Baixar todos os JSONs combinados", json.dumps(json_completo, indent=2, ensure_ascii=False), file_name="resultados_completos.json")
+        if not os.path.exists(caminho):
+            st.warning(f"⚠️ Página {i} ({nome_arquivo}) não encontrada. Pulando.")
+            continue
+
+        st.write(f"📄 Processando página {i}...")
+        resultado = enviar_imagem_para_openai(caminho, prompt_usuario)
+        resultados[nome_arquivo] = resultado
+
+    st.success("✅ Processamento concluído.")
+    
+    # Salvar arquivo temporariamente
+    arquivo_json = f"{livro_id}_{intervalo[0]:03}_{intervalo[1]:03}_resultado.json"
+    with open(arquivo_json, "w", encoding="utf-8") as f:
+        json.dump(resultados, f, indent=2, ensure_ascii=False)
+
+    st.download_button("⬇️ Baixar resultado", json.dumps(resultados, indent=2, ensure_ascii=False), file_name=arquivo_json)

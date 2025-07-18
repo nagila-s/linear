@@ -1,0 +1,86 @@
+
+
+### litTEX_p001.png
+```json
+{
+  "elementos": [
+    {
+      "tipo": "titulo",
+      "conteudo": "Nós Matámos o Cão Tinhoso!"
+    },
+    {
+      "tipo": "subtitulo",
+      "conteudo": "Primeira edição com o conto Rosita, Até Morrer"
+    },
+    {
+      "tipo": "imagem",
+      "descricao": "Silhueta de um cão em preto sobre um fundo cinza com marcas de pneus."
+    },
+    {
+      "tipo": "autor",
+      "conteudo": "Luís Bernardo Honwana"
+    },
+    {
+      "tipo": "paragrafo",
+      "conteudo": "Luís Bernardo Honwana nasceu em 1942, na cidade de Lourenço Marques (atual Maputo), em Moçambique. Em 1964, escreveu sua única obra de ficção: Nós matámos o Cão Tinhoso!, que se tornaria uma das principais obras da literatura moçambicana e internacional, ao ser traduzida para vários idiomas."
+    },
+    {
+      "tipo": "paragrafo",
+      "conteudo": "No mesmo ano, tornou-se militante da FRELIMO (Frente de Libertação de Moçambique) e foi preso por suas atividades de resistência ao colonialismo português."
+    },
+    {
+      "tipo": "paragrafo",
+      "conteudo": "Depois da Independência de Moçambique, em 1975, participou ativamente da política do país, como Diretor de Gabinete do Presidente Samora Machel (1975), Secretário de Estado da Cultura de Moçambique (1982) e Ministro da Cultura (1986)."
+    },
+    {
+      "tipo": "imagem",
+      "descricao": "Fotografia de Luís Bernardo Honwana."
+    }
+  ]
+}
+```
+
+### litTEX_p002.png
+```json
+{
+  "blocos": [
+    {
+      "tipo": "titulo",
+      "conteudo": "TRADUÇÕES DE NÓS MATAMOS O CÃO TINHOSO!"
+    },
+    {
+      "tipo": "lista",
+      "conteudo": [
+        "1969 - We killed mangy-dog and other Mozambique stories. Inglaterra.",
+        "1980 - Wir haben den Räudigen Hund getötet. Alemanha.",
+        "1980 - Svarta Händer. Suécia.",
+        "1983 - Nous avons tué le chien-teigneux. Senegal, Costa do Marfim, Togo.",
+        "1987 - We killed mangy-dog and other Mozambique stories. Zimbábue.",
+        "1988 - Matamos al perro sarnoso. Cuba.",
+        "2006 - Nous avons tué le chien teigneux. França.",
+        "2008 - Nosotros matamos al perro-tiñoso. Espanha."
+      ]
+    },
+    {
+      "tipo": "subtitulo",
+      "conteudo": "A Kapulana traz de volta para o Brasil o livro de contos Nós matamos o Cão Tinhoso!, do moçambicano Luís Bernardo Honwana."
+    },
+    {
+      "tipo": "citação",
+      "conteudo": "\"O Cão Tinhoso olhava-me com força. Os seus olhos azuis não tinham brilho nenhum, mas eram enormes e estavam cheios de lágrimas que lhe escorriam pelo focinho. Metiam medo aqueles olhos, assim tão grandes, a olhar como uma pessoa a pedir qualquer coisa sem querer dizer.\""
+    },
+    {
+      "tipo": "legenda",
+      "conteudo": "Luís Bernardo Honwana (conto: “Nós matamos o Cão Tinhoso!”)"
+    },
+    {
+      "tipo": "nota",
+      "conteudo": "UM DOS 100 MELHORES LIVROS AFRICANOS DO SÉCULO XX! “Zimbabwe International Book Fair”"
+    },
+    {
+      "tipo": "paragrafo",
+      "conteudo": "Obra da literatura africana com reconhecimento internacional, emociona o leitor ao mostrar de forma inovadora e universal olhares, sentimentos e aspirações de um povo em luta contra a opressão."
+    }
+  ]
+}
+```
