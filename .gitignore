@@ -2,8 +2,10 @@
 __pycache__/
 *.pyc
 *.DS_Store
-*.png
+# *.png
 *.pdf
-*.json
+*_resultado.json
+resposta_debug.txt
 *.zip
 .streamlit/secrets.toml
+!vercel.json

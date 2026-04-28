@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 openai_api_key = os.getenv("OPENAI_API_KEY")
+openai_model = os.getenv("OPENAI_MODEL_LINEARIZATION", "gpt-5.2-pro")
 client = OpenAI(api_key=openai_api_key)
 
 
@@ -15,7 +16,7 @@ def enviar_imagem_para_openai(caminho_imagem, prompt):
         imagem_base64 = base64.b64encode(img_file.read()).decode()
 
     resposta = client.chat.completions.create(
-        model="gpt-4o",
+        model=openai_model,
         messages=[
             {
                 "role": "system",
