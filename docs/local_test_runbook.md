@@ -44,7 +44,14 @@ Sinais esperados:
 - API responde em `http://localhost:8000/health`
 - Worker mostra log `Worker iniciado`
 
-## 4) Teste feliz - `linearizar`
+## 4) PDFs grandes
+
+Livros com 100–500 MB sao comuns. O Supabase **Free** limita uploads a **50 MB** (global).
+
+- Padrao do projeto: `PDF_STORAGE_STRATEGY=auto` — tenta Supabase e, em caso de 413, salva em `data/pdf_cache/` (API e worker no mesmo host).
+- Para persistir o PDF na nuvem: plano Pro + aumentar **Global file size limit** no dashboard + migration `20260601180000_storage_pdf_bucket_size.sql`.
+
+## 5) Teste feliz - `linearizar`
 
 Use um PDF pequeno (2 a 3 paginas) e um ISBN valido.
 
@@ -91,7 +98,7 @@ $result | ConvertTo-Json -Depth 10
 
 Abra `download_url` no navegador e valide o JSON.
 
-## 5) Teste feliz - `contextualizar`
+## 6) Teste feliz - `contextualizar`
 
 Repita o upload alterando:
 
@@ -103,21 +110,21 @@ Esperado:
 - pipeline executa sem linearizacao completa de pagina
 - export direcionado para fluxo Avalia
 
-## 6) Testes de erro obrigatorios
+## 7) Testes de erro obrigatorios
 
-### 6.1 ISBN invalido
+### 7.1 ISBN invalido
 
 Use `isbn = "123"` no upload.
 
 Esperado: HTTP 400.
 
-### 6.2 PDF vazio/corrompido
+### 7.2 PDF vazio/corrompido
 
 Envie arquivo vazio ou nao-PDF.
 
 Esperado: HTTP 400.
 
-### 6.3 Falha de integracao (Dorina/OpenAI)
+### 7.3 Falha de integracao (Dorina/OpenAI)
 
 Temporariamente coloque URL invalida no `.env` (ex.: `DORINA_API_URL=http://localhost:9999`), reinicie API/worker e rode um job.
 
@@ -125,7 +132,7 @@ Esperado:
 - job vai para `failed` ou requeue ate atingir `WORKER_MAX_ATTEMPTS`
 - `error_message` preenchido
 
-## 7) Teste de retry manual
+## 8) Teste de retry manual
 
 Depois de um `failed`:
 
@@ -137,7 +144,7 @@ Esperado:
 - status volta para `queued`
 - worker processa novamente
 
-## 8) Criterio para liberar inicio do frontend
+## 9) Criterio para liberar inicio do frontend
 
 Iniciar front so quando estes 6 pontos estiverem verdes:
 
@@ -148,7 +155,7 @@ Iniciar front so quando estes 6 pontos estiverem verdes:
 5. Falha externa gera `failed` com mensagem
 6. Retry reprocessa job com sucesso
 
-## 9) Escopo inicial do frontend (depois da validacao)
+## 10) Escopo inicial do frontend (depois da validacao)
 
 1. Tela de upload (PDF + ISBN + modo)
 2. Tela de status de job

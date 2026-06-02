@@ -25,8 +25,8 @@ class FigureArtifact:
     figure_png: bytes
 
 
-def preprocess_pdf(pdf_bytes: bytes) -> List[PageArtifact]:
-    pages_rgb = convert_from_bytes(pdf_bytes, dpi=300, fmt="png")
+def preprocess_pdf(pdf_bytes: bytes, dpi: int = 150) -> List[PageArtifact]:
+    pages_rgb = convert_from_bytes(pdf_bytes, dpi=dpi, fmt="png")
     output: List[PageArtifact] = []
     for idx, img in enumerate(pages_rgb, start=1):
         grayscale = img.convert("L")

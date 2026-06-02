@@ -64,7 +64,23 @@ AVALIA_API_KEY=
 
 WORKER_POLL_SECONDS=5
 WORKER_MAX_ATTEMPTS=3
+
+PDF_STORAGE_STRATEGY=auto
+PDF_LOCAL_CACHE_DIR=data/pdf_cache
+PDF_MAX_SIZE_MB=1024
 ```
+
+### PDFs grandes (100 MB+)
+
+O limite de **77 MB** que apareceu no upload nao vem da aplicacao: e o **Supabase Storage** (plano **Free** = teto global de **50 MB** por arquivo).
+
+Com `PDF_STORAGE_STRATEGY=auto` (padrao), se o Supabase recusar o upload, o PDF fica em `data/pdf_cache/` e o worker le de la — desde que API e worker rodem na **mesma maquina** (ou volume compartilhado).
+
+Para guardar o original na nuvem:
+
+1. Plano **Pro** (ou superior) no Supabase.
+2. Dashboard → **Storage** → **Settings** → aumentar **Global file size limit** (ex.: 500 MB ou mais).
+3. Rodar a migration `20260601180000_storage_pdf_bucket_size.sql` (limite do bucket `pdf` = 500 MB).
 
 ## Executar localmente
 

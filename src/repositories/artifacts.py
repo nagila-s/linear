@@ -102,6 +102,24 @@ class ArtifactsRepository:
                     (figure_id, model_version, prompt_version, description_text, Jsonb(quality_flags)),
                 )
 
+    def get_final_json_storage_path(self, job_id: UUID) -> str | None:
+        query = """
+            SELECT storage_path
+            FROM artifacts
+            WHERE job_id = %s AND artifact_type = %s
+            LIMIT 1
+        """
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, (str(job_id), "final_json"))
+                row = cur.fetchone()
+                if not row or not row[0]:
+                    return None
+                return str(row[0]).strip() or None
+
+    def has_final_json(self, job_id: UUID) -> bool:
+        return self.get_final_json_storage_path(job_id) is not None
+
     def save_final_payload(self, job_id: UUID, payload: Dict[str, Any], storage_path: str) -> None:
         query = """
             INSERT INTO artifacts (

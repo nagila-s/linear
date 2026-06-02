@@ -6,6 +6,8 @@ from supabase import create_client
 
 from src.core.config import get_settings
 from src.core.errors import IntegrationError
+from src.services.pdf_paths import is_local_storage_path, resolve_local_pdf_path
+from src.utils.json_codec import normalize_unicode_in_json
 
 
 class StorageService:
@@ -43,14 +45,42 @@ class StorageService:
         )
         return f"{self.settings.bucket_figures}/{path}"
 
-    def upload_json(self, isbn: str, process_version: str, job_id: str, file_name: str, payload: Dict[str, Any]) -> str:
+    def upload_json(
+        self,
+        isbn: str,
+        process_version: str,
+        job_id: str,
+        file_name: str,
+        payload: Dict[str, Any],
+        indent: int | None = 2,
+    ) -> str:
         path = f"{isbn}/{process_version}/{job_id}/{file_name}"
+        normalized = normalize_unicode_in_json(payload)
+        body = json.dumps(normalized, ensure_ascii=False, indent=indent, default=str)
+        if indent is not None:
+            body = body + "\n"
         self.client.storage.from_(self.settings.bucket_json).upload(
             path=path,
-            file=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            file=body.encode("utf-8"),
             file_options={"content-type": "application/json", "upsert": "true"},
         )
         return f"{self.settings.bucket_json}/{path}"
+
+    def download_json_if_exists(
+        self, isbn: str, process_version: str, job_id: str, file_name: str
+    ) -> Dict[str, Any] | None:
+        path = f"{isbn}/{process_version}/{job_id}/{file_name}"
+        try:
+            data = self.client.storage.from_(self.settings.bucket_json).download(path)
+        except Exception:
+            return None
+        if not data:
+            return None
+        raw: bytes = data if isinstance(data, bytes) else io.BytesIO(data).read()
+        try:
+            return json.loads(raw.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return None
 
     def download_pdf(self, isbn: str) -> bytes:
         path = f"{isbn}/original.pdf"
@@ -62,6 +92,12 @@ class StorageService:
         return io.BytesIO(data).read()
 
     def download_by_storage_path(self, storage_path: str) -> bytes:
+        if is_local_storage_path(storage_path):
+            path = resolve_local_pdf_path(storage_path)
+            if not path.is_file():
+                raise IntegrationError(f"PDF local nao encontrado: {path}")
+            return path.read_bytes()
+
         normalized = storage_path.strip().lstrip("/")
         if not normalized or "/" not in normalized:
             raise IntegrationError("storage_path_pdf invalido.")

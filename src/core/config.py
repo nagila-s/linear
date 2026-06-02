@@ -27,11 +27,12 @@ class Settings(BaseSettings):
     openai_model_linearization: str = "gpt-5.2-pro"
     openai_model_context: str = "gpt-5.2-pro"
     openai_combined_mode: bool = False
+    openai_prefer_responses_api: bool = True
     linearization_prompt_file: str = "prompt.txt"
     linear_prompt_version: str = "v1"
     context_prompt_version: str = "v1"
     dorina_prompt_version: str = "v1"
-    process_version_strategy: str = "lin-{linear_prompt_version}_ctx-{context_prompt_version}_dor-{dorina_prompt_version}"
+    process_version_strategy: str = "lin-{linear_prompt_version}"
 
     dorina_api_url: str = Field(default="")
     dorina_api_key: str = Field(default="")
@@ -49,6 +50,13 @@ class Settings(BaseSettings):
     worker_poll_seconds: int = 5
     worker_max_attempts: int = 3
     worker_stale_job_minutes: int = 120
+    linear_pipeline_only: bool = True
+    pdf_render_dpi: int = 150
+    linearize_page_concurrency: int = 4
+    # auto = Supabase; em 413 (limite do plano/bucket) grava em disco local compartilhado com o worker
+    pdf_storage_strategy: str = "auto"
+    pdf_local_cache_dir: str = "data/pdf_cache"
+    pdf_max_size_mb: int = 1024
 
     @property
     def cors_origins_list(self) -> List[str]:

@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
+import httpx
 from openai import APIError, BadRequestError, NotFoundError, OpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -94,6 +95,12 @@ class OpenAIService:
 
     def _ask_vision(self, png_bytes: bytes, prompt: str, model: str) -> str:
         image_b64 = base64.b64encode(png_bytes).decode("utf-8")
+        if self.settings.openai_prefer_responses_api:
+            content = self._ask_vision_with_responses(image_b64, prompt, model)
+            if not content:
+                raise IntegrationError("OpenAI retornou resposta vazia.")
+            return content
+
         try:
             response = self.client.chat.completions.create(
                 model=model,
@@ -124,9 +131,57 @@ class OpenAIService:
         return content
 
     def _ask_vision_with_responses(self, image_b64: str, prompt: str, model: str) -> str:
-        response = self.client.responses.create(
-            model=model,
-            input=[
+        responses = getattr(self.client, "responses", None)
+        create = getattr(responses, "create", None) if responses is not None else None
+        if callable(create):
+            try:
+                response = create(
+                    model=model,
+                    input=[
+                        {
+                            "role": "system",
+                            "content": [{"type": "input_text", "text": "Voce responde em JSON valido, sem markdown."}],
+                        },
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "input_text", "text": prompt},
+                                {"type": "input_image", "image_url": f"data:image/png;base64,{image_b64}"},
+                            ],
+                        },
+                    ],
+                )
+                output_text = getattr(response, "output_text", None)
+                if output_text:
+                    return str(output_text).strip()
+
+                output = getattr(response, "output", [])
+                texts: List[str] = []
+                for item in output:
+                    content = getattr(item, "content", [])
+                    for part in content:
+                        if getattr(part, "type", "") in ("output_text", "text"):
+                            text_value = getattr(part, "text", "")
+                            if text_value:
+                                texts.append(text_value)
+                merged = "\n".join(texts).strip()
+                if merged:
+                    return merged
+            except AttributeError:
+                pass
+
+        return self._ask_vision_with_responses_http(image_b64, prompt, model)
+
+    def _ask_vision_with_responses_http(self, image_b64: str, prompt: str, model: str) -> str:
+        """Chama POST /v1/responses quando o SDK OpenAI instalado nao expoe client.responses."""
+        url = "https://api.openai.com/v1/responses"
+        headers = {
+            "Authorization": f"Bearer {self.settings.openai_api_key}",
+            "Content-Type": "application/json",
+        }
+        payload: Dict[str, Any] = {
+            "model": model,
+            "input": [
                 {
                     "role": "system",
                     "content": [{"type": "input_text", "text": "Voce responde em JSON valido, sem markdown."}],
@@ -139,22 +194,43 @@ class OpenAIService:
                     ],
                 },
             ],
-        )
-        output_text = getattr(response, "output_text", None)
-        if output_text:
-            return output_text
+        }
+        timeout = httpx.Timeout(600.0, connect=30.0)
+        with httpx.Client(timeout=timeout) as client:
+            response = client.post(url, headers=headers, json=payload)
+            response.raise_for_status()
+            data = response.json()
+        text = self._parse_responses_api_json(data)
+        if not text:
+            raise IntegrationError("OpenAI responses API (HTTP) retornou saida vazia ou nao reconhecida.")
+        return text
 
-        # Fallback defensivo para SDKs/formatos diferentes.
-        output = getattr(response, "output", [])
-        texts: List[str] = []
-        for item in output:
-            content = getattr(item, "content", [])
+    @staticmethod
+    def _parse_responses_api_json(data: Any) -> str:
+        if not isinstance(data, dict):
+            return ""
+        for key in ("output_text", "text"):
+            val = data.get(key)
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+        out = data.get("output")
+        if not isinstance(out, list):
+            return ""
+        parts: List[str] = []
+        for block in out:
+            if not isinstance(block, dict):
+                continue
+            content = block.get("content")
+            if not isinstance(content, list):
+                continue
             for part in content:
-                if getattr(part, "type", "") in ("output_text", "text"):
-                    text_value = getattr(part, "text", "")
-                    if text_value:
-                        texts.append(text_value)
-        return "\n".join(texts).strip()
+                if not isinstance(part, dict):
+                    continue
+                if part.get("type") in ("output_text", "text"):
+                    txt = part.get("text")
+                    if isinstance(txt, str) and txt.strip():
+                        parts.append(txt.strip())
+        return "\n".join(parts).strip()
 
     def _load_linearization_prompt(self) -> str:
         fallback = (

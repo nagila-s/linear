@@ -14,7 +14,7 @@ shutdown_event = asyncio.Event()
 
 
 def _handle_signal(sig, _frame):
-    logger.info("Sinal recebido, encerrando apos job atual", signal=sig)
+    logger.info("Sinal recebido, encerrando (cancela job em andamento)", signal=sig)
     shutdown_event.set()
 
 
@@ -69,7 +69,48 @@ async def main():
             if not job:
                 await asyncio.sleep(settings.worker_poll_seconds)
                 continue
-            await process_job(queue, job)
+
+            job_id = str(job["id"])
+            work_task = asyncio.create_task(process_job(queue, job))
+            shutdown_task = asyncio.create_task(shutdown_event.wait())
+            done, _pending = await asyncio.wait(
+                {work_task, shutdown_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            if shutdown_task in done and not work_task.done():
+                work_task.cancel()
+                try:
+                    await work_task
+                except asyncio.CancelledError:
+                    pass
+                try:
+                    await queue.fail_job(
+                        job_id,
+                        "Worker encerrado pelo operador (SIGINT/SIGTERM) durante o processamento.",
+                    )
+                except Exception as error:
+                    logger.warning("fail_job apos cancelamento", job_id=job_id, error=str(error))
+                shutdown_task.cancel()
+                try:
+                    await shutdown_task
+                except asyncio.CancelledError:
+                    pass
+                break
+
+            shutdown_task.cancel()
+            try:
+                await shutdown_task
+            except asyncio.CancelledError:
+                pass
+
+            try:
+                await work_task
+            except asyncio.CancelledError:
+                pass
+
+            if shutdown_event.is_set():
+                break
     finally:
         await queue.disconnect()
 
