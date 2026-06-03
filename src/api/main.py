@@ -13,7 +13,7 @@ from src.models.schemas import HealthResponse, JobResponse
 from src.repositories.artifacts import ArtifactsRepository
 from src.repositories.books import BooksRepository
 from src.repositories.jobs import JobsRepository
-from src.services.isbn import normalize_isbn
+from src.services.isbn import normalize_isbn, resolve_book_key
 from src.services.pdf_storage import PdfStorageService, is_payload_too_large
 from src.services.storage import StorageService
 
@@ -45,7 +45,7 @@ def health() -> HealthResponse:
 
 @app.post(f"{settings.api_prefix}/jobs/upload", response_model=JobResponse)
 async def create_job_from_upload(
-    isbn: str = Form(...),
+    isbn: str | None = Form(None),
     job_type: JobType = Form(JobType.LINEARIZAR),
     prompt_version: str = Form("v1"),
     pdf_file: UploadFile = File(...),
@@ -54,7 +54,7 @@ async def create_job_from_upload(
         if job_type != JobType.LINEARIZAR:
             raise ValidationError("Apenas jobs do tipo 'linearizar' estao habilitados.")
 
-        normalized_isbn = normalize_isbn(isbn)
+        normalized_isbn = resolve_book_key(isbn, pdf_file.filename)
         if pdf_file.content_type not in ("application/pdf", "application/octet-stream"):
             raise ValidationError("Arquivo precisa ser PDF.")
 
@@ -148,10 +148,8 @@ async def create_jobs_from_multi_upload(
             if not pdf_content:
                 raise ValidationError(f"Arquivo PDF vazio: {file.filename}")
 
-            if len(files) == 1 and isbn:
-                normalized_isbn = normalize_isbn(isbn)
-            else:
-                normalized_isbn = normalize_isbn((file.filename or "").rsplit(".", 1)[0])
+            file_isbn = isbn if len(files) == 1 else None
+            normalized_isbn = resolve_book_key(file_isbn, file.filename)
 
             storage_path_pdf = pdf_storage.store(normalized_isbn, pdf_content, process_version=process_version)
             books_repo.upsert(

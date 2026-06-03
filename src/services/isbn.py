@@ -1,6 +1,32 @@
 import re
+import unicodedata
 
 from src.core.errors import ValidationError
+
+
+def _slugify_identifier(text: str) -> str:
+    normalized = unicodedata.normalize("NFD", text)
+    without_accents = "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", without_accents).strip("-").lower()
+    return slug or "livro"
+
+
+def resolve_book_key(raw: str | None, filename: str | None = None) -> str:
+    """ISBN opcional: usa campo, nome do arquivo (se for ISBN) ou slug do arquivo."""
+    if raw and raw.strip():
+        cleaned = re.sub(r"[^0-9Xx]", "", raw.strip())
+        if cleaned:
+            return normalize_isbn(raw)
+
+    if filename:
+        stem = (filename or "").rsplit(".", 1)[0].strip()
+        if stem:
+            try:
+                return normalize_isbn(stem)
+            except ValidationError:
+                return _slugify_identifier(stem)
+
+    raise ValidationError("Informe um ISBN ou use um arquivo PDF com nome identificável.")
 
 
 def normalize_isbn(raw: str) -> str:
