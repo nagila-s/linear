@@ -1,3 +1,4 @@
+# Deploy Vercel = só Next.js. Backend Python roda na AWS (ECS).
 .env
 .env.*
 data/
@@ -5,3 +6,19 @@ output/
 __pycache__/
 *.pyc
 .streamlit/
+
+# Python / worker / API (nao sobe na Vercel)
+src/
+requirements.txt
+api/
+run_api.py
+run_worker.py
+app.py
+processamento.py
+scripts/
+deploy/
+supabase/
+.github/
+Dockerfile
+Dockerfile.*
+*.pdf
