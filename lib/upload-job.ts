@@ -1,17 +1,51 @@
 /** Upload de PDF: direto na API publica (evita limite de body da Vercel). */
 
+const VERCEL_BFF_MAX_BYTES = 4.5 * 1024 * 1024;
+
 export function getPublicApiBase(): string | null {
   const url = process.env.NEXT_PUBLIC_FASTAPI_URL?.trim();
   if (!url) return null;
-  return url.replace(/\/+$/, "");
+  const normalized = url.replace(/\/+$/, "");
+
+  // Site HTTPS + API HTTP → browser bloqueia fetch direto; usa proxy na Vercel.
+  if (typeof window !== "undefined") {
+    const pageIsHttps = window.location.protocol === "https:";
+    const apiIsHttp = normalized.startsWith("http://");
+    if (pageIsHttps && apiIsHttp) {
+      return `${window.location.origin}/backend-api`;
+    }
+  }
+
+  return normalized;
 }
 
 export function usesDirectUpload(): boolean {
-  return Boolean(getPublicApiBase());
+  return Boolean(process.env.NEXT_PUBLIC_FASTAPI_URL?.trim());
 }
 
 function apiPrefix(): string {
   return (process.env.NEXT_PUBLIC_API_PREFIX ?? "/api/v1").replace(/\/+$/, "");
+}
+
+async function readApiJson(response: Response): Promise<{
+  id?: string;
+  detail?: string | { msg?: string }[];
+  error?: string;
+}> {
+  const contentType = response.headers.get("content-type") ?? "";
+  const body = await response.text();
+  if (contentType.includes("application/json")) {
+    try {
+      return JSON.parse(body) as {
+        id?: string;
+        detail?: string | { msg?: string }[];
+        error?: string;
+      };
+    } catch {
+      throw new Error("Resposta invalida da API.");
+    }
+  }
+  throw new Error(body.slice(0, 200) || `Falha na API (${response.status}).`);
 }
 
 export async function uploadPdfToApi(
@@ -29,16 +63,20 @@ export async function uploadPdfToApi(
   form.append("job_type", "linearizar");
   form.append("prompt_version", "v1");
 
-  const response = await fetch(`${base}${apiPrefix()}/jobs/upload`, {
-    method: "POST",
-    body: form,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${base}${apiPrefix()}/jobs/upload`, {
+      method: "POST",
+      body: form,
+      credentials: "same-origin",
+    });
+  } catch {
+    throw new Error(
+      "Nao foi possivel enviar o PDF. Confira FASTAPI_URL na Vercel e se a API na AWS esta no ar.",
+    );
+  }
 
-  const payload = (await response.json()) as {
-    id?: string;
-    detail?: string | { msg?: string }[];
-    error?: string;
-  };
+  const payload = await readApiJson(response);
 
   if (!response.ok) {
     const detail =
@@ -88,5 +126,12 @@ export async function startPdfJob(
   if (usesDirectUpload()) {
     return uploadPdfToApi(file, isbn);
   }
+
+  if (file.size > VERCEL_BFF_MAX_BYTES) {
+    throw new Error(
+      "PDF maior que 4,5 MB. Configure NEXT_PUBLIC_FASTAPI_URL na Vercel (URL da API na AWS).",
+    );
+  }
+
   return uploadPdfViaBff(file, isbn);
 }
