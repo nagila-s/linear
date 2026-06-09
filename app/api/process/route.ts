@@ -57,8 +57,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch (error) {
     const message =
       error instanceof Error
-        ? error.message.includes("fetch")
-          ? "API FastAPI indisponível. Execute `python run_api.py` neste repositório."
+        ? error.message.includes("fetch") || error.message.includes("FASTAPI_URL")
+          ? process.env.NODE_ENV === "production"
+            ? "API FastAPI indisponível. Verifique FASTAPI_URL e se o backend está no ar."
+            : "API FastAPI indisponível. Execute `python run_api.py` neste repositório."
           : error.message
         : "Falha ao iniciar processamento.";
     return jsonError(message, 500);

@@ -1,12 +1,21 @@
 import { NextResponse } from "next/server";
 
-/** API FastAPI deste mesmo repositório (`python run_api.py`). */
-const FASTAPI_ORIGIN = (process.env.FASTAPI_URL ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
+function resolveFastApiOrigin(): string {
+  const configured = process.env.FASTAPI_URL?.trim();
+  if (configured) return configured.replace(/\/+$/, "");
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "FASTAPI_URL não configurada. Defina a URL pública da API FastAPI nas variáveis da Vercel.",
+    );
+  }
+  return "http://127.0.0.1:8000";
+}
+
 const API_PREFIX = (process.env.API_PREFIX ?? "/api/v1").replace(/\/+$/, "");
 
 export function fastApiUrl(path: string): string {
   const normalized = path.startsWith("/") ? path : `/${path}`;
-  return `${FASTAPI_ORIGIN}${API_PREFIX}${normalized}`;
+  return `${resolveFastApiOrigin()}${API_PREFIX}${normalized}`;
 }
 
 export async function fetchFastApi(path: string, init?: RequestInit): Promise<Response> {

@@ -1,0 +1,38 @@
+{
+  "family": "linear-worker",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "2048",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/linearWorkerTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "linear-worker",
+      "image": "ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/linear-worker:latest",
+      "essential": true,
+      "environment": [
+        { "name": "APP_ENV", "value": "production" },
+        { "name": "PDF_STORAGE_STRATEGY", "value": "supabase" },
+        { "name": "WORKER_POLL_SECONDS", "value": "5" },
+        { "name": "WORKER_MAX_ATTEMPTS", "value": "3" }
+      ],
+      "secrets": [
+        { "name": "SUPABASE_URL", "valueFrom": "arn:aws:ssm:REGION:ACCOUNT_ID:parameter/linear/SUPABASE_URL" },
+        { "name": "SUPABASE_SERVICE_ROLE_KEY", "valueFrom": "arn:aws:ssm:REGION:ACCOUNT_ID:parameter/linear/SUPABASE_SERVICE_ROLE_KEY" },
+        { "name": "SUPABASE_DB_DSN", "valueFrom": "arn:aws:ssm:REGION:ACCOUNT_ID:parameter/linear/SUPABASE_DB_DSN" },
+        { "name": "OPENAI_API_KEY", "valueFrom": "arn:aws:ssm:REGION:ACCOUNT_ID:parameter/linear/OPENAI_API_KEY" },
+        { "name": "DORINA_API_URL", "valueFrom": "arn:aws:ssm:REGION:ACCOUNT_ID:parameter/linear/DORINA_API_URL" },
+        { "name": "DORINA_API_KEY", "valueFrom": "arn:aws:ssm:REGION:ACCOUNT_ID:parameter/linear/DORINA_API_KEY" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/linear-worker",
+          "awslogs-region": "REGION",
+          "awslogs-stream-prefix": "worker"
+        }
+      }
+    }
+  ]
+}

@@ -82,7 +82,7 @@ Para guardar o original na nuvem:
 2. Dashboard → **Storage** → **Settings** → aumentar **Global file size limit** (ex.: 500 MB ou mais).
 3. Rodar a migration `20260601180000_storage_pdf_bucket_size.sql` (limite do bucket `pdf` = 500 MB).
 
-## Executar localmente
+## Executar localmente (desenvolvimento)
 
 1. Instale dependencias:
    `pip install -r requirements.txt`
@@ -90,6 +90,10 @@ Para guardar o original na nuvem:
    `python run_api.py`
 3. Suba o worker (em outro terminal):
    `python run_worker.py`
+4. Interface:
+   `npm install && npm run dev`
+
+Producao: nao use o PC para API/worker — veja `docs/deploy-completo.md`.
 
 ## Endpoints principais
 
@@ -105,12 +109,13 @@ Para guardar o original na nuvem:
 
 ## Observacoes de deploy
 
-- Vercel funciona bem para a camada HTTP (FastAPI serverless).
-- O worker e de longa execucao; normalmente deve rodar fora da Vercel (ex.: VM, container, Fly, Railway, ECS).
-- O front pode ficar na Vercel consumindo a API.
+- **Tudo online:** `docs/deploy-completo.md` — `deploy/aws/README.md` (API + worker ECS) + Vercel.
+- O worker processa o PDF; a API so recebe o upload e enfileira o job.
 
 ## Documentacao adicional
 
+- `docs/deploy-completo.md`
+- `docs/vercel-deploy.md`
 - `docs/schema_assumptions.md`
 - `docs/deploy.md`
 - `docs/local_test_runbook.md`

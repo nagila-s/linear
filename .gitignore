@@ -13,4 +13,5 @@ __pycache__/
 resposta_debug.txt
 *.zip
 .streamlit/secrets.toml
-!vercel.json
+.vercel
+deploy/aws/setup-ssm-from-env.ps1

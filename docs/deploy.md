@@ -1,16 +1,20 @@
 # Deploy recomendado
 
-## Frontend
+## Visao geral
 
-- Vercel (Next.js ou similar), consumindo a API backend.
+[`docs/deploy-completo.md`](deploy-completo.md) — Vercel (site) + AWS ECS (API + worker) + Supabase.
 
-## Backend HTTP (FastAPI)
+## Passos
 
-- Pode rodar em Vercel Serverless usando `api/index.py`.
-- Bom para endpoints de ingestao/status/download URL.
+1. `python scripts/check_supabase_prod.py`
+2. [`deploy/aws/README.md`](../deploy/aws/README.md) — worker ECS, depois API ECS + ALB
+3. [`docs/vercel-deploy.md`](vercel-deploy.md) — variaveis Vercel
+4. `python scripts/smoke_e2e.py --api-url https://...`
 
-## Worker (fila/jobs)
+## Artefatos
 
-- Nao deve rodar em serverless.
-- Deploy recomendado em processo de longa execucao (container/VM).
-- Opcoes comuns: Railway, Fly.io, Render, ECS, VM dedicada.
+| Servico | Dockerfile |
+|---------|------------|
+| API | `Dockerfile.api` |
+| Worker | `Dockerfile.worker` |
+| Site | Vercel (Next.js) |

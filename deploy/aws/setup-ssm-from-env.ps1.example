@@ -1,0 +1,47 @@
+# Exemplo: criar parametros SSM /linear/* a partir do .env local (NAO commitar este script preenchido).
+# Copie para setup-ssm-from-env.ps1 e execute uma vez com credenciais AWS configuradas.
+#
+# .\deploy\aws\setup-ssm-from-env.ps1 -Region us-west-2
+
+param([string]$Region = "us-west-2")
+
+$ErrorActionPreference = "Stop"
+$envFile = Join-Path $PSScriptRoot "..\..\.env"
+if (-not (Test-Path $envFile)) { throw "Arquivo .env nao encontrado: $envFile" }
+
+$keys = @(
+    "SUPABASE_URL",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "SUPABASE_DB_DSN",
+    "OPENAI_API_KEY",
+    "CORS_ORIGINS",
+    "DORINA_API_URL",
+    "DORINA_API_KEY"
+)
+
+Get-Content $envFile | ForEach-Object {
+    if ($_ -match '^\s*([^#=]+)=(.*)$') {
+        $name = $matches[1].Trim()
+        $value = $matches[2].Trim().Trim('"')
+        Set-Variable -Name "env_$name" -Value $value -Scope Script
+    }
+}
+
+foreach ($key in $keys) {
+    $varName = "env_$key"
+    if (-not (Get-Variable -Name $varName -ErrorAction SilentlyContinue)) {
+        Write-Warning "Pulando $key (ausente no .env)"
+        continue
+    }
+    $value = (Get-Variable -Name $varName).Value
+    if (-not $value) { continue }
+    aws ssm put-parameter `
+        --name "/linear/$key" `
+        --value $value `
+        --type "SecureString" `
+        --overwrite `
+        --region $Region | Out-Null
+    Write-Host "OK: /linear/$key"
+}
+
+Write-Host "Parametros SSM criados. Referencie em task-definition.*.example.json"

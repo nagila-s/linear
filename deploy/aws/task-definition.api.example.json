@@ -1,0 +1,50 @@
+{
+  "family": "linear-api",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/linearApiTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "linear-api",
+      "image": "ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/linear-api:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "APP_ENV", "value": "production" },
+        { "name": "APP_PORT", "value": "8000" },
+        { "name": "API_PREFIX", "value": "/api/v1" },
+        { "name": "PDF_STORAGE_STRATEGY", "value": "supabase" }
+      ],
+      "secrets": [
+        { "name": "SUPABASE_URL", "valueFrom": "arn:aws:ssm:REGION:ACCOUNT_ID:parameter/linear/SUPABASE_URL" },
+        { "name": "SUPABASE_SERVICE_ROLE_KEY", "valueFrom": "arn:aws:ssm:REGION:ACCOUNT_ID:parameter/linear/SUPABASE_SERVICE_ROLE_KEY" },
+        { "name": "SUPABASE_DB_DSN", "valueFrom": "arn:aws:ssm:REGION:ACCOUNT_ID:parameter/linear/SUPABASE_DB_DSN" },
+        { "name": "OPENAI_API_KEY", "valueFrom": "arn:aws:ssm:REGION:ACCOUNT_ID:parameter/linear/OPENAI_API_KEY" },
+        { "name": "CORS_ORIGINS", "valueFrom": "arn:aws:ssm:REGION:ACCOUNT_ID:parameter/linear/CORS_ORIGINS" }
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')\" || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/linear-api",
+          "awslogs-region": "REGION",
+          "awslogs-stream-prefix": "api"
+        }
+      }
+    }
+  ]
+}

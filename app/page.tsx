@@ -6,6 +6,7 @@ import { ProgressModal } from "@/components/ProgressModal";
 import { SettingsDrawer } from "@/components/SettingsDrawer";
 import { UploadDropzone } from "@/components/UploadDropzone";
 import { extractIsbnFromFilename, isValidIsbn, normalizeIsbn } from "@/lib/isbn";
+import { startPdfJob } from "@/lib/upload-job";
 import { slugify } from "@/lib/utils";
 import type { IsbnLookupResponse, ProcessStatusResponse } from "@/types";
 
@@ -172,30 +173,22 @@ export default function HomePage() {
             disabled={!canSubmit}
             onClick={async () => {
               if (!file) return;
-              const formData = new FormData();
-              formData.append("pdf", file);
-              if (isbn.trim()) formData.append("isbn", normalizeIsbn(isbn));
-              formData.append("linearize", "true");
-              formData.append("contextualize", "false");
-
-              const response = await fetch("/api/process", { method: "POST", body: formData });
-              const payload = (await response.json()) as {
-                jobId?: string;
-                message?: string;
-                error?: string;
-              };
-              if (!response.ok || !payload.jobId) {
-                window.alert(payload.error ?? "Não foi possível iniciar o processamento.");
-                return;
+              try {
+                const normalizedIsbn = isbn.trim() ? normalizeIsbn(isbn) : undefined;
+                const payload = await startPdfJob(file, normalizedIsbn);
+                setJobId(payload.jobId);
+                setProgressOpen(true);
+                setStatus({
+                  status: "processing",
+                  progress: 5,
+                  message: payload.message ?? "Processamento iniciado...",
+                  title: lookup.data?.title ?? file.name.replace(/\.pdf$/i, ""),
+                });
+              } catch (error) {
+                const message =
+                  error instanceof Error ? error.message : "Não foi possível iniciar o processamento.";
+                window.alert(message);
               }
-              setJobId(payload.jobId);
-              setProgressOpen(true);
-              setStatus({
-                status: "processing",
-                progress: 5,
-                message: payload.message ?? "Processamento iniciado...",
-                title: lookup.data?.title ?? file.name.replace(/\.pdf$/i, ""),
-              });
             }}
             className="rounded-2xl border-2 border-black bg-amber-400 px-10 py-4 text-xl font-bold text-black hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-50"
           >

@@ -1,0 +1,20 @@
+# Worker de longa execucao (fila Supabase + pipeline PDF/OpenAI).
+# Nao expoe HTTP — sem ALB.
+FROM python:3.11-slim
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends poppler-utils \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY prompt.txt .
+COPY src ./src
+COPY run_worker.py ./
+ENV APP_ENV=production
+ENV PYTHONUNBUFFERED=1
+
+CMD ["python", "run_worker.py"]
