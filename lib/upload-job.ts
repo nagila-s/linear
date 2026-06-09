@@ -23,7 +23,7 @@ export function usesDirectUpload(): boolean {
 }
 
 /** Site HTTPS: upload direto HTTP e proxy Vercel falham acima de ~4,5 MB. */
-export function usePresignedUploadInBrowser(): boolean {
+function shouldUsePresignedUploadInBrowser(): boolean {
   return typeof window !== "undefined" && window.location.protocol === "https:";
 }
 
@@ -181,7 +181,7 @@ export async function startPdfJob(
   file: File,
   isbn?: string,
 ): Promise<{ jobId: string; message?: string }> {
-  if (usePresignedUploadInBrowser()) {
+  if (shouldUsePresignedUploadInBrowser()) {
     return uploadPdfViaPresigned(file, isbn);
   }
 
