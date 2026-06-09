@@ -7,10 +7,9 @@ __pycache__/
 *.pyc
 .streamlit/
 
-# Python / worker / API (nao sobe na Vercel)
+# Python backend (nao sobe na Vercel). Nao use "api/" — isso exclui app/api/ do Next.js!
 src/
 requirements.txt
-api/
 run_api.py
 run_worker.py
 app.py

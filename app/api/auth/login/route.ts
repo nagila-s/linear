@@ -4,11 +4,11 @@ import { SESSION_COOKIE_NAME } from "@/lib/auth";
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const { password } = (await request.json()) as { password?: string };
-  const configuredPassword = process.env.ACCESS_PASSWORD;
+  const configuredPassword = process.env.ACCESS_PASSWORD ?? process.env.APP_PASSWORD;
 
   if (!configuredPassword) {
     return NextResponse.json(
-      { error: "ACCESS_PASSWORD nao configurada no ambiente." },
+      { error: "ACCESS_PASSWORD (ou APP_PASSWORD) nao configurada no ambiente." },
       { status: 500 },
     );
   }
