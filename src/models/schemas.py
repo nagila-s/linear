@@ -36,6 +36,33 @@ class HealthResponse(BaseModel):
     service: str = "linear-backend"
 
 
+class UploadInitRequest(BaseModel):
+    isbn: Optional[str] = None
+    filename: str = Field(min_length=1, max_length=512)
+    job_type: JobType = JobType.LINEARIZAR
+    prompt_version: str = Field(default="v1")
+
+
+class UploadInitResponse(BaseModel):
+    signed_url: str
+    token: str
+    storage_path: str
+    isbn: str
+    process_version: str
+    bucket: str
+    object_path: str
+
+
+class UploadCompleteRequest(BaseModel):
+    isbn: str = Field(min_length=10, max_length=17)
+    storage_path: str = Field(min_length=3)
+    object_path: str = Field(min_length=3)
+    token: str = Field(min_length=1)
+    filename: str = Field(min_length=1, max_length=512)
+    job_type: JobType = JobType.LINEARIZAR
+    prompt_version: str = Field(default="v1")
+
+
 class FigureContext(BaseModel):
     figure_id: str
     context: str

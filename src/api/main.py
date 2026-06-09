@@ -9,7 +9,13 @@ from src.core.config import get_settings
 from src.core.errors import AppError, ValidationError
 from src.core.logging import configure_logging
 from src.models.enums import JobStatus, JobType
-from src.models.schemas import HealthResponse, JobResponse
+from src.models.schemas import (
+    HealthResponse,
+    JobResponse,
+    UploadCompleteRequest,
+    UploadInitRequest,
+    UploadInitResponse,
+)
 from src.repositories.artifacts import ArtifactsRepository
 from src.repositories.books import BooksRepository
 from src.repositories.jobs import JobsRepository
@@ -38,9 +44,104 @@ storage = StorageService()
 pdf_storage = PdfStorageService(storage)
 
 
+def _process_version() -> str:
+    return settings.process_version_strategy.format(
+        linear_prompt_version=settings.linear_prompt_version,
+    )
+
+
+def _create_linearize_job(
+    *,
+    normalized_isbn: str,
+    filename: str,
+    storage_path_pdf: str,
+    prompt_version: str,
+) -> JobResponse:
+    process_version = _process_version()
+    books_repo.upsert(
+        normalized_isbn,
+        metadata={
+            "filename": filename,
+            "storage_path_pdf": storage_path_pdf,
+        },
+    )
+    created = jobs_repo.create(
+        isbn=normalized_isbn,
+        job_type=JobType.LINEARIZAR,
+        prompt_version=prompt_version,
+        metadata={
+            "filename": filename,
+            "pipeline_mode": JobType.LINEARIZAR.value,
+            "linearize_only": True,
+            "process_version": process_version,
+            "openai_model": settings.openai_model_linearization,
+            "pdf_render_dpi": settings.pdf_render_dpi,
+            "pdf_storage_path": storage_path_pdf,
+        },
+    )
+    return JobResponse.model_validate(created)
+
+
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse()
+
+
+@app.post(f"{settings.api_prefix}/jobs/upload-init", response_model=UploadInitResponse)
+def init_presigned_upload(payload: UploadInitRequest) -> UploadInitResponse:
+    try:
+        if payload.job_type != JobType.LINEARIZAR:
+            raise ValidationError("Apenas jobs do tipo 'linearizar' estao habilitados.")
+        if not payload.filename.lower().endswith(".pdf"):
+            raise ValidationError("Arquivo precisa ser PDF.")
+
+        normalized_isbn = resolve_book_key(payload.isbn, payload.filename)
+        process_version = _process_version()
+        upload_info = storage.create_pdf_upload_url(normalized_isbn, process_version)
+        return UploadInitResponse(
+            signed_url=upload_info["signed_url"],
+            token=upload_info["token"],
+            storage_path=upload_info["storage_path"],
+            isbn=normalized_isbn,
+            process_version=process_version,
+            bucket=upload_info["bucket"],
+            object_path=upload_info["object_path"],
+        )
+    except AppError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Erro ao iniciar upload assinado: %s", exc)
+        raise HTTPException(status_code=500, detail="Falha ao preparar upload do PDF.") from exc
+
+
+@app.post(f"{settings.api_prefix}/jobs/upload-complete", response_model=JobResponse)
+def complete_presigned_upload(payload: UploadCompleteRequest) -> JobResponse:
+    try:
+        if payload.job_type != JobType.LINEARIZAR:
+            raise ValidationError("Apenas jobs do tipo 'linearizar' estao habilitados.")
+
+        normalized_isbn = normalize_isbn(payload.isbn)
+        if not payload.object_path.startswith(f"{normalized_isbn}/"):
+            raise ValidationError("object_path nao corresponde ao ISBN informado.")
+
+        expected_storage = f"{settings.bucket_pdf}/{payload.object_path}"
+        if payload.storage_path != expected_storage:
+            raise ValidationError("storage_path invalido para este upload.")
+
+        if not storage.pdf_object_exists(payload.object_path):
+            raise ValidationError("PDF ainda nao encontrado no storage. Conclua o upload antes de finalizar.")
+
+        return _create_linearize_job(
+            normalized_isbn=normalized_isbn,
+            filename=payload.filename,
+            storage_path_pdf=payload.storage_path,
+            prompt_version=payload.prompt_version,
+        )
+    except AppError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Erro ao concluir upload assinado: %s", exc)
+        raise HTTPException(status_code=500, detail="Falha ao enfileirar job apos upload.") from exc
 
 
 @app.post(f"{settings.api_prefix}/jobs/upload", response_model=JobResponse)
@@ -62,32 +163,14 @@ async def create_job_from_upload(
         if not pdf_content:
             raise ValidationError("Arquivo PDF vazio.")
 
-        process_version = settings.process_version_strategy.format(
-            linear_prompt_version=settings.linear_prompt_version,
-        )
+        process_version = _process_version()
         storage_path_pdf = pdf_storage.store(normalized_isbn, pdf_content, process_version=process_version)
-        books_repo.upsert(
-            normalized_isbn,
-            metadata={
-                "filename": pdf_file.filename or "original.pdf",
-                "storage_path_pdf": storage_path_pdf,
-            },
-        )
-        created = jobs_repo.create(
-            isbn=normalized_isbn,
-            job_type=job_type,
+        return _create_linearize_job(
+            normalized_isbn=normalized_isbn,
+            filename=pdf_file.filename or "original.pdf",
+            storage_path_pdf=storage_path_pdf,
             prompt_version=prompt_version,
-            metadata={
-                "filename": pdf_file.filename or "original.pdf",
-                "pipeline_mode": JobType.LINEARIZAR.value,
-                "linearize_only": True,
-                "process_version": process_version,
-                "openai_model": settings.openai_model_linearization,
-                "pdf_render_dpi": settings.pdf_render_dpi,
-                "pdf_storage_path": storage_path_pdf,
-            },
         )
-        return JobResponse.model_validate(created)
     except AppError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001

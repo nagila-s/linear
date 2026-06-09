@@ -1,26 +1,30 @@
-/** Upload de PDF: direto na API publica (evita limite de body da Vercel). */
+/** Upload de PDF na producao: URL assinada Supabase (PDF grande, sem limite da Vercel). */
 
 const VERCEL_BFF_MAX_BYTES = 4.5 * 1024 * 1024;
+
+type UploadInitPayload = {
+  signed_url: string;
+  token: string;
+  storage_path: string;
+  isbn: string;
+  process_version: string;
+  bucket: string;
+  object_path: string;
+};
 
 export function getPublicApiBase(): string | null {
   const url = process.env.NEXT_PUBLIC_FASTAPI_URL?.trim();
   if (!url) return null;
-  const normalized = url.replace(/\/+$/, "");
-
-  // Site HTTPS + API HTTP → browser bloqueia fetch direto; usa proxy na Vercel.
-  if (typeof window !== "undefined") {
-    const pageIsHttps = window.location.protocol === "https:";
-    const apiIsHttp = normalized.startsWith("http://");
-    if (pageIsHttps && apiIsHttp) {
-      return `${window.location.origin}/backend-api`;
-    }
-  }
-
-  return normalized;
+  return url.replace(/\/+$/, "");
 }
 
 export function usesDirectUpload(): boolean {
   return Boolean(process.env.NEXT_PUBLIC_FASTAPI_URL?.trim());
+}
+
+/** Site HTTPS: upload direto HTTP e proxy Vercel falham acima de ~4,5 MB. */
+export function usePresignedUploadInBrowser(): boolean {
+  return typeof window !== "undefined" && window.location.protocol === "https:";
 }
 
 function apiPrefix(): string {
@@ -48,6 +52,61 @@ async function readApiJson(response: Response): Promise<{
   throw new Error(body.slice(0, 200) || `Falha na API (${response.status}).`);
 }
 
+export async function uploadPdfViaPresigned(
+  file: File,
+  isbn?: string,
+): Promise<{ jobId: string; message?: string }> {
+  const initResponse = await fetch("/api/process/upload-init", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ isbn, filename: file.name }),
+  });
+  const initPayload = (await initResponse.json()) as UploadInitPayload & { error?: string };
+  if (!initResponse.ok) {
+    throw new Error(initPayload.error ?? "Falha ao preparar upload do PDF.");
+  }
+
+  const uploadResponse = await fetch(initPayload.signed_url, {
+    method: "PUT",
+    headers: {
+      "Content-Type": file.type || "application/pdf",
+      Authorization: `Bearer ${initPayload.token}`,
+      "x-upsert": "true",
+    },
+    body: file,
+  });
+
+  if (!uploadResponse.ok) {
+    const detail = await uploadResponse.text();
+    throw new Error(
+      detail.slice(0, 200) ||
+        `Falha ao enviar PDF ao storage (${uploadResponse.status}). Verifique limite do Supabase Storage.`,
+    );
+  }
+
+  const completeResponse = await fetch("/api/process/upload-complete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      isbn: initPayload.isbn,
+      storage_path: initPayload.storage_path,
+      object_path: initPayload.object_path,
+      token: initPayload.token,
+      filename: file.name,
+    }),
+  });
+  const completePayload = (await completeResponse.json()) as {
+    jobId?: string;
+    message?: string;
+    error?: string;
+  };
+  if (!completeResponse.ok || !completePayload.jobId) {
+    throw new Error(completePayload.error ?? "Falha ao enfileirar processamento.");
+  }
+
+  return { jobId: completePayload.jobId, message: completePayload.message };
+}
+
 export async function uploadPdfToApi(
   file: File,
   isbn?: string,
@@ -68,11 +127,10 @@ export async function uploadPdfToApi(
     response = await fetch(`${base}${apiPrefix()}/jobs/upload`, {
       method: "POST",
       body: form,
-      credentials: "same-origin",
     });
   } catch {
     throw new Error(
-      "Nao foi possivel enviar o PDF. Confira FASTAPI_URL na Vercel e se a API na AWS esta no ar.",
+      "Nao foi possivel enviar o PDF. Confira NEXT_PUBLIC_FASTAPI_URL e se a API na AWS esta no ar.",
     );
   }
 
@@ -123,13 +181,17 @@ export async function startPdfJob(
   file: File,
   isbn?: string,
 ): Promise<{ jobId: string; message?: string }> {
+  if (usePresignedUploadInBrowser()) {
+    return uploadPdfViaPresigned(file, isbn);
+  }
+
   if (usesDirectUpload()) {
     return uploadPdfToApi(file, isbn);
   }
 
   if (file.size > VERCEL_BFF_MAX_BYTES) {
     throw new Error(
-      "PDF maior que 4,5 MB. Configure NEXT_PUBLIC_FASTAPI_URL na Vercel (URL da API na AWS).",
+      "PDF maior que 4,5 MB. Configure NEXT_PUBLIC_FASTAPI_URL ou use o site publicado na Vercel.",
     );
   }
 

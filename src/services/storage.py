@@ -121,3 +121,29 @@ class StorageService:
         bucket, path = normalized.split("/", 1)
         result = self.client.storage.from_(bucket).create_signed_url(path, expires_in)
         return result.get("signedURL", "")
+
+    def create_pdf_upload_url(self, isbn: str, process_version: str) -> dict[str, str]:
+        object_path = f"{isbn}/{process_version}/original.pdf"
+        result = self.client.storage.from_(self.settings.bucket_pdf).create_signed_upload_url(object_path)
+        signed_url = result.get("signedURL") or result.get("signedUrl") or ""
+        token = result.get("token") or ""
+        if not signed_url or not token:
+            raise IntegrationError("Supabase nao retornou URL assinada para upload do PDF.")
+        storage_path = f"{self.settings.bucket_pdf}/{object_path}"
+        return {
+            "signed_url": signed_url,
+            "token": token,
+            "storage_path": storage_path,
+            "object_path": object_path,
+            "bucket": self.settings.bucket_pdf,
+        }
+
+    def pdf_object_exists(self, object_path: str) -> bool:
+        if "/" not in object_path:
+            return False
+        folder, name = object_path.rsplit("/", 1)
+        try:
+            items = self.client.storage.from_(self.settings.bucket_pdf).list(folder)
+        except Exception:
+            return False
+        return any(str(item.get("name")) == name for item in (items or []))
