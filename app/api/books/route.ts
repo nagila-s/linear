@@ -1,10 +1,23 @@
 import { NextResponse } from "next/server";
+import {
+  extractFastApiError,
+  fetchFastApi,
+  jsonError,
+  readFastApiJson,
+} from "@/app/api/_utils/fastapi";
 
-/** A API FastAPI ainda não expõe listagem de livros; retorno vazio até existir endpoint. */
 export async function GET(): Promise<NextResponse> {
-  return NextResponse.json({
-    books: [],
-    message:
-      "Listagem de livros processados ainda não está na API Python. Use o fluxo de upload na tela principal.",
-  });
+  try {
+    const response = await fetchFastApi("/books");
+    const payload = await readFastApiJson(response);
+    if (!response.ok) {
+      return jsonError(extractFastApiError(payload, "Falha ao listar livros."), response.status);
+    }
+    return NextResponse.json(payload);
+  } catch {
+    return jsonError(
+      "API indisponivel. Execute `python run_api.py` ou verifique FASTAPI_URL.",
+      503,
+    );
+  }
 }

@@ -4,16 +4,19 @@ import { SESSION_COOKIE_NAME } from "@/lib/auth";
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const { password } = (await request.json()) as { password?: string };
-  const configuredPassword = process.env.ACCESS_PASSWORD ?? process.env.APP_PASSWORD;
+  const allowedPasswords = [
+    process.env.ACCESS_PASSWORD?.trim(),
+    process.env.APP_PASSWORD?.trim(),
+  ].filter((value): value is string => Boolean(value));
 
-  if (!configuredPassword) {
+  if (!allowedPasswords.length) {
     return NextResponse.json(
       { error: "ACCESS_PASSWORD (ou APP_PASSWORD) nao configurada no ambiente." },
       { status: 500 },
     );
   }
 
-  if (!password || password !== configuredPassword) {
+  if (!password || !allowedPasswords.includes(password)) {
     return NextResponse.json({ error: "Senha invalida." }, { status: 401 });
   }
 

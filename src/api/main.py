@@ -10,6 +10,8 @@ from src.core.errors import AppError, ValidationError
 from src.core.logging import configure_logging
 from src.models.enums import JobStatus, JobType
 from src.models.schemas import (
+    BookListItem,
+    BookListResponse,
     HealthResponse,
     JobResponse,
     UploadCompleteRequest,
@@ -85,6 +87,47 @@ def _create_linearize_job(
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse()
+
+
+def _map_job_ui_status(raw_status: str) -> str:
+    normalized = (raw_status or "").lower()
+    if normalized == JobStatus.DONE.value:
+        return "done"
+    if normalized == JobStatus.FAILED.value:
+        return "error"
+    return "processing"
+
+
+@app.get(f"{settings.api_prefix}/books", response_model=BookListResponse)
+def list_books(limit: int = 100) -> BookListResponse:
+    try:
+        rows = books_repo.list_with_latest_job(limit=min(max(limit, 1), 200))
+        books: list[BookListItem] = []
+        for row in rows:
+            metadata = row.get("metadata") or {}
+            if not isinstance(metadata, dict):
+                metadata = {}
+            title = (
+                str(row.get("titulo") or "").strip()
+                or str(metadata.get("filename") or metadata.get("title") or "").strip()
+                or str(row.get("isbn") or "Livro")
+            )
+            job_type = str(row.get("job_type") or JobType.LINEARIZAR.value)
+            actions = ["Linearizar"] if job_type == JobType.LINEARIZAR.value else [job_type]
+            created_at = row.get("job_created_at")
+            books.append(
+                BookListItem(
+                    id=str(row["job_id"]),
+                    title=title,
+                    createdAt=created_at.isoformat() if created_at else "",
+                    actions=actions,
+                    status=_map_job_ui_status(str(row.get("status") or "")),
+                )
+            )
+        return BookListResponse(books=books)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Erro ao listar livros: %s", exc)
+        raise HTTPException(status_code=500, detail="Falha ao listar livros processados.") from exc
 
 
 @app.post(f"{settings.api_prefix}/jobs/upload-init", response_model=UploadInitResponse)

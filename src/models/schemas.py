@@ -36,6 +36,18 @@ class HealthResponse(BaseModel):
     service: str = "linear-backend"
 
 
+class BookListItem(BaseModel):
+    id: str
+    title: str
+    createdAt: str
+    actions: List[str] = Field(default_factory=list)
+    status: str
+
+
+class BookListResponse(BaseModel):
+    books: List[BookListItem] = Field(default_factory=list)
+
+
 class UploadInitRequest(BaseModel):
     isbn: Optional[str] = None
     filename: str = Field(min_length=1, max_length=512)

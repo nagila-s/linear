@@ -144,8 +144,14 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
                           <span className="rounded-full bg-amber-100 px-2 py-1 text-xs text-amber-800">
                             Em andamento
                           </span>
+                        ) : book.status === "done" ? (
+                          <span className="rounded-full bg-green-100 px-2 py-1 text-xs text-green-800">
+                            Concluído
+                          </span>
                         ) : (
-                          <span className="text-zinc-700">{book.status}</span>
+                          <span className="rounded-full bg-red-100 px-2 py-1 text-xs text-red-800">
+                            Erro
+                          </span>
                         )}
                       </td>
                       <td className="px-3 py-2">

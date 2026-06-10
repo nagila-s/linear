@@ -1,7 +1,7 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { setClientSessionToken } from "@/lib/auth";
 
 async function readLoginResponse(response: Response): Promise<{ token?: string; error?: string }> {
@@ -33,27 +33,39 @@ async function readLoginResponse(response: Response): Promise<{ token?: string; 
 }
 
 export default function LoginPage() {
-  const router = useRouter();
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-white px-4">
+    <main className="flex min-h-screen flex-col items-center justify-center bg-white px-4">
+      <div className="mb-8 flex justify-center">
+        <Image
+          src="/logo-linear.png"
+          alt="Linear"
+          width={280}
+          height={280}
+          priority
+          className="h-auto w-56 sm:w-64"
+        />
+      </div>
       <div className="w-full max-w-sm rounded-xl border border-zinc-200 p-6 shadow-sm">
-        <h1 className="text-2xl font-semibold text-zinc-900">Entrar no Linear</h1>
+        <h1 className="text-2xl font-semibold text-zinc-900">Entrar</h1>
         <p className="mt-2 text-sm text-zinc-600">Informe a senha de acesso.</p>
         <form
           className="mt-5 space-y-4"
           onSubmit={async (event) => {
             event.preventDefault();
+            if (loading) return;
             setError("");
             setLoading(true);
+            let redirecting = false;
             try {
               const response = await fetch("/api/auth/login", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                credentials: "same-origin",
                 body: JSON.stringify({ password }),
               });
               const payload = await readLoginResponse(response);
@@ -62,12 +74,12 @@ export default function LoginPage() {
                 return;
               }
               setClientSessionToken(payload.token);
-              router.push("/");
-              router.refresh();
+              redirecting = true;
+              window.location.assign("/");
             } catch {
               setError("Nao foi possivel contactar o servidor. Tente de novo.");
             } finally {
-              setLoading(false);
+              if (!redirecting) setLoading(false);
             }
           }}
         >
