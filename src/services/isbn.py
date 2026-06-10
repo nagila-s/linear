@@ -29,6 +29,30 @@ def resolve_book_key(raw: str | None, filename: str | None = None) -> str:
     raise ValidationError("Informe um ISBN ou use um arquivo PDF com nome identificável.")
 
 
+_SLUG_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
+
+
+def validate_book_key(raw: str) -> str:
+    """Aceita ISBN (10/13) ou slug gerado a partir do nome do arquivo."""
+    cleaned = (raw or "").strip()
+    if not cleaned:
+        raise ValidationError("Identificador do livro obrigatorio.")
+    if len(cleaned) > 128:
+        raise ValidationError("Identificador do livro muito longo (max. 128 caracteres).")
+
+    digits = re.sub(r"[^0-9Xx]", "", cleaned)
+    if len(digits) in (10, 13):
+        try:
+            return normalize_isbn(cleaned)
+        except ValidationError:
+            pass
+
+    if _SLUG_PATTERN.fullmatch(cleaned):
+        return cleaned
+
+    raise ValidationError("Identificador do livro invalido.")
+
+
 def normalize_isbn(raw: str) -> str:
     cleaned = re.sub(r"[^0-9Xx]", "", (raw or "").strip())
     if len(cleaned) == 10:

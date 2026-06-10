@@ -2,6 +2,7 @@ import io
 import json
 from typing import Any, Dict
 
+from storage3.types import CreateSignedUploadUrlOptions
 from supabase import create_client
 
 from src.core.config import get_settings
@@ -124,7 +125,10 @@ class StorageService:
 
     def create_pdf_upload_url(self, isbn: str, process_version: str) -> dict[str, str]:
         object_path = f"{isbn}/{process_version}/original.pdf"
-        result = self.client.storage.from_(self.settings.bucket_pdf).create_signed_upload_url(object_path)
+        result = self.client.storage.from_(self.settings.bucket_pdf).create_signed_upload_url(
+            object_path,
+            options=CreateSignedUploadUrlOptions(upsert="true"),
+        )
         signed_url = result.get("signedURL") or result.get("signedUrl") or ""
         token = result.get("token") or ""
         if not signed_url or not token:
@@ -139,11 +143,9 @@ class StorageService:
         }
 
     def pdf_object_exists(self, object_path: str) -> bool:
-        if "/" not in object_path:
+        if not object_path.strip():
             return False
-        folder, name = object_path.rsplit("/", 1)
         try:
-            items = self.client.storage.from_(self.settings.bucket_pdf).list(folder)
+            return self.client.storage.from_(self.settings.bucket_pdf).exists(object_path)
         except Exception:
             return False
-        return any(str(item.get("name")) == name for item in (items or []))

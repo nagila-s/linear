@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchFastApi, jsonError } from "@/app/api/_utils/fastapi";
+import {
+  extractFastApiError,
+  fetchFastApi,
+  jsonError,
+  readFastApiJson,
+} from "@/app/api/_utils/fastapi";
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
@@ -29,14 +34,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }),
     });
 
-    const payload = await response.json();
+    const payload = await readFastApiJson(response);
     if (!response.ok) {
-      const detail = typeof payload.detail === "string" ? payload.detail : "Falha ao enfileirar job.";
-      return jsonError(detail, response.status);
+      return jsonError(extractFastApiError(payload, "Falha ao enfileirar job."), response.status);
+    }
+
+    const job = payload as { id?: string };
+    if (!job.id) {
+      return jsonError("Resposta da API sem id do job.", 502);
     }
 
     return NextResponse.json({
-      jobId: String(payload.id),
+      jobId: String(job.id),
       message: "Analisando estrutura...",
     });
   } catch (error) {

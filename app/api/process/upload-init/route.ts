@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchFastApi, jsonError } from "@/app/api/_utils/fastapi";
+import {
+  extractFastApiError,
+  fetchFastApi,
+  jsonError,
+  readFastApiJson,
+} from "@/app/api/_utils/fastapi";
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
@@ -23,10 +28,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }),
     });
 
-    const payload = await response.json();
+    const payload = await readFastApiJson(response);
     if (!response.ok) {
-      const detail = typeof payload.detail === "string" ? payload.detail : "Falha ao preparar upload.";
-      return jsonError(detail, response.status);
+      return jsonError(extractFastApiError(payload, "Falha ao preparar upload."), response.status);
     }
 
     return NextResponse.json(payload);

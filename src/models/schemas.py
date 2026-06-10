@@ -8,7 +8,7 @@ from src.models.enums import JobStatus, JobType
 
 
 class CreateJobPayload(BaseModel):
-    isbn: str = Field(min_length=10, max_length=17)
+    isbn: str = Field(min_length=1, max_length=128)
     job_type: JobType
     prompt_version: str = Field(default="v1")
     metadata: Dict[str, Any] = Field(default_factory=dict)
@@ -54,7 +54,7 @@ class UploadInitResponse(BaseModel):
 
 
 class UploadCompleteRequest(BaseModel):
-    isbn: str = Field(min_length=10, max_length=17)
+    isbn: str = Field(min_length=1, max_length=128)
     storage_path: str = Field(min_length=3)
     object_path: str = Field(min_length=3)
     token: str = Field(min_length=1)

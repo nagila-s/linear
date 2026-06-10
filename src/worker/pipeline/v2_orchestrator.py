@@ -1,5 +1,6 @@
 import asyncio
 from typing import Any
+from uuid import UUID
 
 from psycopg.rows import dict_row
 
@@ -7,6 +8,7 @@ from src.core.config import get_settings
 from src.models.enums import JobType
 from src.repositories.artifacts import ArtifactsRepository
 from src.repositories.db import get_conn
+from src.repositories.jobs import JobsRepository
 from src.services.openai_client import OpenAIService
 from src.services.storage import StorageService
 from src.worker.pipeline.stages import describe, extract_images
@@ -52,6 +54,9 @@ async def run(job: dict, _queue) -> dict:
     storage = StorageService()
     openai = OpenAIService()
 
+    job_id = UUID(str(job_data["id"]))
+    jobs_repo = JobsRepository()
+
     ctx = {
         "job_id": str(job_data["id"]),
         "book_id": str(job_data["book_id"]),
@@ -67,8 +72,11 @@ async def run(job: dict, _queue) -> dict:
         "linearize_page_concurrency": app_settings.linearize_page_concurrency,
     }
 
+    await asyncio.to_thread(jobs_repo.update_stage, job_id, "pages")
     ctx = await extract_images.run(ctx)
+    await asyncio.to_thread(jobs_repo.update_stage, job_id, "linearize")
     ctx = await describe.run(ctx)
+    await asyncio.to_thread(jobs_repo.update_stage, job_id, "assemble")
 
     final_payload = {
         "isbn": ctx["isbn"],

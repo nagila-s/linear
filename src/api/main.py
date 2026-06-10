@@ -19,7 +19,7 @@ from src.models.schemas import (
 from src.repositories.artifacts import ArtifactsRepository
 from src.repositories.books import BooksRepository
 from src.repositories.jobs import JobsRepository
-from src.services.isbn import normalize_isbn, resolve_book_key
+from src.services.isbn import resolve_book_key, validate_book_key
 from src.services.pdf_storage import PdfStorageService, is_payload_too_large
 from src.services.storage import StorageService
 
@@ -120,9 +120,9 @@ def complete_presigned_upload(payload: UploadCompleteRequest) -> JobResponse:
         if payload.job_type != JobType.LINEARIZAR:
             raise ValidationError("Apenas jobs do tipo 'linearizar' estao habilitados.")
 
-        normalized_isbn = normalize_isbn(payload.isbn)
-        if not payload.object_path.startswith(f"{normalized_isbn}/"):
-            raise ValidationError("object_path nao corresponde ao ISBN informado.")
+        book_key = validate_book_key(payload.isbn)
+        if not payload.object_path.startswith(f"{book_key}/"):
+            raise ValidationError("object_path nao corresponde ao identificador do livro.")
 
         expected_storage = f"{settings.bucket_pdf}/{payload.object_path}"
         if payload.storage_path != expected_storage:
@@ -132,7 +132,7 @@ def complete_presigned_upload(payload: UploadCompleteRequest) -> JobResponse:
             raise ValidationError("PDF ainda nao encontrado no storage. Conclua o upload antes de finalizar.")
 
         return _create_linearize_job(
-            normalized_isbn=normalized_isbn,
+            normalized_isbn=book_key,
             filename=payload.filename,
             storage_path_pdf=payload.storage_path,
             prompt_version=payload.prompt_version,

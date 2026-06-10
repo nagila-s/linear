@@ -21,10 +21,36 @@ export function ProgressModal({
 }: ProgressModalProps) {
   if (!open) return null;
 
+  const canDismiss = status === "done" || status === "error";
+
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-2xl">
-        <h2 className="text-xl font-semibold text-zinc-900">{title}</h2>
+    <div
+      className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4"
+      onClick={canDismiss ? onClose : undefined}
+      role="presentation"
+    >
+      <div
+        className="w-full max-w-lg rounded-xl bg-white p-6 shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="progress-modal-title"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <h2 id="progress-modal-title" className="text-xl font-semibold text-zinc-900">
+            {title}
+          </h2>
+          {canDismiss ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full p-1 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800"
+              aria-label="Fechar"
+            >
+              ✕
+            </button>
+          ) : null}
+        </div>
         <div className="mt-5 h-3 w-full overflow-hidden rounded-full bg-zinc-200">
           <div
             className="h-full rounded-full bg-amber-400 transition-all duration-500"
@@ -36,13 +62,22 @@ export function ProgressModal({
 
         <div className="mt-6 flex justify-end gap-3">
           {status === "done" ? (
-            <button
-              type="button"
-              onClick={onDownload}
-              className="rounded-full bg-amber-400 px-5 py-2 text-sm font-semibold text-zinc-900 hover:bg-amber-300"
-            >
-              Baixar JSON
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-full border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-100"
+              >
+                Fechar
+              </button>
+              <button
+                type="button"
+                onClick={onDownload}
+                className="rounded-full bg-amber-400 px-5 py-2 text-sm font-semibold text-zinc-900 hover:bg-amber-300"
+              >
+                Baixar JSON
+              </button>
+            </>
           ) : null}
           {status === "error" ? (
             <button
@@ -50,7 +85,7 @@ export function ProgressModal({
               onClick={onClose}
               className="rounded-full border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-100"
             >
-              Voltar
+              Fechar
             </button>
           ) : null}
         </div>

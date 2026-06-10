@@ -63,7 +63,10 @@ export async function uploadPdfViaPresigned(
   });
   const initPayload = (await initResponse.json()) as UploadInitPayload & { error?: string };
   if (!initResponse.ok) {
-    throw new Error(initPayload.error ?? "Falha ao preparar upload do PDF.");
+    throw new Error(initPayload.error ?? `Falha ao preparar upload do PDF (${initResponse.status}).`);
+  }
+  if (!initPayload.signed_url || !initPayload.token || !initPayload.storage_path) {
+    throw new Error("Resposta incompleta ao preparar upload do PDF.");
   }
 
   const uploadResponse = await fetch(initPayload.signed_url, {
@@ -95,13 +98,23 @@ export async function uploadPdfViaPresigned(
       filename: file.name,
     }),
   });
-  const completePayload = (await completeResponse.json()) as {
-    jobId?: string;
-    message?: string;
-    error?: string;
-  };
+  let completePayload: { jobId?: string; message?: string; error?: string };
+  try {
+    completePayload = (await completeResponse.json()) as {
+      jobId?: string;
+      message?: string;
+      error?: string;
+    };
+  } catch {
+    throw new Error(
+      `Falha ao enfileirar processamento (${completeResponse.status}). A API pode estar indisponivel.`,
+    );
+  }
   if (!completeResponse.ok || !completePayload.jobId) {
-    throw new Error(completePayload.error ?? "Falha ao enfileirar processamento.");
+    throw new Error(
+      completePayload.error ??
+        `Falha ao enfileirar processamento (${completeResponse.status}).`,
+    );
   }
 
   return { jobId: completePayload.jobId, message: completePayload.message };
