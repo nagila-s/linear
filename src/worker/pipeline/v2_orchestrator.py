@@ -12,6 +12,7 @@ from src.repositories.jobs import JobsRepository
 from src.services.openai_client import OpenAIService
 from src.services.storage import StorageService
 from src.worker.pipeline.stages import describe, extract_images
+from src.worker.services.dorina_client import DorinaClient
 from src.worker.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -53,6 +54,7 @@ async def run(job: dict, _queue) -> dict:
     artifacts_repo = ArtifactsRepository()
     storage = StorageService()
     openai = OpenAIService()
+    dorina = DorinaClient()
 
     job_id = UUID(str(job_data["id"]))
     jobs_repo = JobsRepository()
@@ -68,6 +70,7 @@ async def run(job: dict, _queue) -> dict:
         "artifacts_repo": artifacts_repo,
         "storage": storage,
         "openai": openai,
+        "dorina": dorina,
         "pdf_render_dpi": app_settings.pdf_render_dpi,
         "linearize_page_concurrency": app_settings.linearize_page_concurrency,
     }
@@ -86,6 +89,7 @@ async def run(job: dict, _queue) -> dict:
         "process_version": process_version,
         "dpi": ctx["pdf_render_dpi"],
         "pages": ctx["linearized_pages"],
+        "descriptions": ctx.get("descriptions", []),
     }
 
     await asyncio.to_thread(

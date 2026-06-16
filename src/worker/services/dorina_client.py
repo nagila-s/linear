@@ -9,13 +9,19 @@ class DorinaClient:
     def __init__(self):
         self._service = DorinaService()
 
-    async def describe(self, image_url: str, braille: bool = False) -> str:
+    async def describe(
+        self,
+        image_url: str,
+        context: str = "",
+        prompt_version: str = "v1",
+        braille: bool = False,
+    ) -> dict:
         response = self._service.describe_figure(
             image_url=image_url,
             isbn="",
-            context="",
-            prompt_version="v1",
+            context=context,
+            prompt_version=prompt_version,
             image_id=0,
             document_id=0,
         )
-        return str(response.get("description") or response.get("texto") or "")
+        return response
