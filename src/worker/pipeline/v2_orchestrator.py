@@ -75,7 +75,7 @@ async def run(job: dict, _queue) -> dict:
         "linearize_page_concurrency": app_settings.linearize_page_concurrency,
     }
 
-    await asyncio.to_thread(jobs_repo.update_stage, job_id, "pages")
+    await asyncio.to_thread(jobs_repo.update_stage, job_id, "preprocess")
     ctx = await extract_images.run(ctx)
     await asyncio.to_thread(jobs_repo.update_stage, job_id, "linearize")
     ctx = await describe.run(ctx)
