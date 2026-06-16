@@ -126,6 +126,43 @@ def _extract_image_refs_and_captions(content: Any) -> tuple[set[str], dict[str, 
     return refs, captions
 
 
+def _apply_descriptions_to_content(content: Any, descriptions_by_key: dict[str, str]) -> None:
+    fig_pattern = re.compile(r"^fig\d+$", re.IGNORECASE)
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            image_id = str(node.get("id") or "").strip().lower()
+            if fig_pattern.match(image_id):
+                description = descriptions_by_key.get(image_id, "").strip()
+                if description:
+                    node["descricao"] = description
+            for value in node.values():
+                walk(value)
+            return
+        if isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(content)
+
+
+def _figures_for_refs(page_figures: list[dict], refs: set[str]) -> list[dict]:
+    if not refs:
+        return []
+    by_key = {
+        str(fig.get("figure_key", "")).lower(): fig
+        for fig in page_figures
+        if str(fig.get("figure_key", "")).strip()
+    }
+    selected = [by_key[key] for key in sorted(refs) if key in by_key]
+    if selected:
+        return selected
+
+    ordered = sorted(page_figures, key=lambda item: int(item.get("figure_index") or 0))
+    refs_sorted = sorted(refs, key=lambda key: int(re.sub(r"\D", "", key) or 0))
+    return [ordered[idx] for idx, _ in enumerate(refs_sorted) if idx < len(ordered)]
+
+
 async def run(ctx: dict) -> dict:
     openai = ctx["openai"]
     dorina = ctx["dorina"]
@@ -162,7 +199,7 @@ async def run(ctx: dict) -> dict:
     sem = asyncio.Semaphore(concurrency)
     ck_lock = asyncio.Lock()
 
-    async def process_page(page: dict) -> None:
+    async def linearize_page_entry(page: dict) -> None:
         page_number = int(page["page_number"])
         async with sem:
             page_structure = await asyncio.to_thread(
@@ -174,20 +211,41 @@ async def run(ctx: dict) -> dict:
             "page_number": page_number,
             "content": page_structure,
         }
+        async with ck_lock:
+            pages_done[page_number] = linear_entry
+            await asyncio.to_thread(
+                _save_linear_checkpoint,
+                storage,
+                isbn,
+                process_version,
+                job_id,
+                prompt_version,
+                pages_done,
+            )
 
+    async def describe_page_entry(page: dict) -> None:
+        page_number = int(page["page_number"])
+        linear_entry = pages_done.get(page_number)
+        if not linear_entry:
+            return
+
+        page_structure = linear_entry["content"]
         refs, captions = _extract_image_refs_and_captions(page_structure)
         page_figures = sorted(
             figures_by_page.get(page_number, []),
             key=lambda item: int(item.get("figure_index") or 0),
         )
-        selected = [fig for fig in page_figures if str(fig.get("figure_key", "")).lower() in refs]
+        selected = _figures_for_refs(page_figures, refs)
         page_descriptions: list[dict[str, Any]] = []
+
         for fig in selected:
             figure_id = str(fig.get("figure_id") or "").strip()
             if not figure_id:
                 continue
-            if figure_id in descriptions_done:
-                page_descriptions.append(descriptions_done[figure_id])
+            figure_key = str(fig.get("figure_key") or "").lower()
+            existing = descriptions_done.get(figure_id)
+            if existing and existing.get("status") != "failed" and str(existing.get("description") or "").strip():
+                page_descriptions.append(existing)
                 continue
 
             image_url = await asyncio.to_thread(
@@ -195,7 +253,6 @@ async def run(ctx: dict) -> dict:
                 str(fig.get("storage_path") or ""),
                 signed_url_ttl,
             )
-            figure_key = str(fig.get("figure_key") or "").lower()
             caption_context = captions.get(figure_key, "")
             try:
                 dorina_payload = await dorina.describe(
@@ -236,31 +293,45 @@ async def run(ctx: dict) -> dict:
             descriptions_done[figure_id] = description_item
             page_descriptions.append(description_item)
 
+        descriptions_by_key = {
+            str(item.get("figure_key") or "").lower(): str(item.get("description") or "")
+            for item in page_descriptions
+            if str(item.get("description") or "").strip()
+        }
+        content_updated = False
+        if descriptions_by_key:
+            _apply_descriptions_to_content(page_structure, descriptions_by_key)
+            content_updated = True
+
         async with ck_lock:
             pages_done[page_number] = linear_entry
-            await asyncio.to_thread(
-                _save_linear_checkpoint,
-                storage,
-                isbn,
-                process_version,
-                job_id,
-                prompt_version,
-                pages_done,
-            )
-            if page_descriptions:
-                await asyncio.to_thread(
-                    _save_descriptions_checkpoint,
-                    storage,
-                    isbn,
-                    process_version,
-                    job_id,
-                    dorina_prompt_version,
-                    descriptions_done,
-                )
+            if content_updated or page_descriptions:
+                if page_descriptions:
+                    await asyncio.to_thread(
+                        _save_descriptions_checkpoint,
+                        storage,
+                        isbn,
+                        process_version,
+                        job_id,
+                        dorina_prompt_version,
+                        descriptions_done,
+                    )
+                if content_updated:
+                    await asyncio.to_thread(
+                        _save_linear_checkpoint,
+                        storage,
+                        isbn,
+                        process_version,
+                        job_id,
+                        prompt_version,
+                        pages_done,
+                    )
 
-    pending = [p for p in pages if int(p["page_number"]) not in pages_done]
-    if pending:
-        await asyncio.gather(*[process_page(p) for p in pending])
+    pending_linearize = [p for p in pages if int(p["page_number"]) not in pages_done]
+    if pending_linearize:
+        await asyncio.gather(*[linearize_page_entry(p) for p in pending_linearize])
+
+    await asyncio.gather(*[describe_page_entry(p) for p in pages])
 
     linearized_pages = [pages_done[n] for n in sorted(pages_done)]
     ctx["linearized_pages"] = linearized_pages
@@ -268,6 +339,8 @@ async def run(ctx: dict) -> dict:
         descriptions_done.values(),
         key=lambda item: (int(item.get("page_number", 0)), str(item.get("figure_key", ""))),
     )
-    ctx["described_count"] = len(linearized_pages)
+    ctx["described_count"] = sum(
+        1 for item in ctx["descriptions"] if str(item.get("status")) == "ok" and str(item.get("description") or "").strip()
+    )
     ctx["failed_count"] = sum(1 for item in ctx["descriptions"] if str(item.get("status")) == "failed")
     return ctx

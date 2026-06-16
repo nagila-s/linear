@@ -1,8 +1,8 @@
 # Build e push das imagens linear-api e linear-worker para o ECR.
-# Uso: .\deploy\aws\push-images.ps1 -Region us-west-2
+# Uso: .\deploy\aws\push-images.ps1 -Region us-east-2
 
 param(
-    [string]$Region = "us-west-2",
+    [string]$Region = "us-east-2",
     [string]$Tag = "latest"
 )
 

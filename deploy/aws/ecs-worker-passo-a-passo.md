@@ -1,13 +1,13 @@
 # ECS Fargate — worker (`linear-worker`) passo a passo
 
-Use a região **us-west-2** (Oregon), a mesma do ECR e do SSM.
+Use a região **us-east-2** (Ohio), a mesma do ECR e do SSM.
 
 Valores já prontos no seu ambiente:
 
 | Item | Valor |
 |------|--------|
 | Account ID | `089200327380` |
-| Imagem ECR | `089200327380.dkr.ecr.us-west-2.amazonaws.com/linear-worker:latest` |
+| Imagem ECR | `089200327380.dkr.ecr.us-east-2.amazonaws.com/linear-worker:latest` |
 | Parâmetros SSM | `/linear/SUPABASE_URL`, etc. |
 
 ---
@@ -16,7 +16,7 @@ Valores já prontos no seu ambiente:
 
 ### A.1 Log group no CloudWatch
 
-1. Console AWS → canto superior direito: região **US West (Oregon) / us-west-2**.
+1. Console AWS → canto superior direito: região **US East (Ohio) / us-east-2**.
 2. Busque **CloudWatch** → menu **Logs** → **Log groups**.
 3. **Create log group**.
 4. Nome exato: `/ecs/linear-worker`
@@ -28,7 +28,7 @@ Repita depois para a API: `/ecs/linear-api`.
 Ou no PowerShell:
 
 ```powershell
-aws logs create-log-group --log-group-name /ecs/linear-worker --region us-west-2
+aws logs create-log-group --log-group-name /ecs/linear-worker --region us-east-2
 ```
 
 ### A.2 Papel IAM `ecsTaskExecutionRole` (puxar imagem + logs + secrets SSM)
@@ -44,7 +44,7 @@ O ECS precisa de um **task execution role** para:
 1. **IAM** → **Roles** → busque `ecsTaskExecutionRole`.
 2. Se existir → abra e confira políticas anexadas:
    - `AmazonECSTaskExecutionRolePolicy` (geralmente já vem)
-   - Para SSM: precisa permissão de leitura em `arn:aws:ssm:us-west-2:089200327380:parameter/linear/*`
+   - Para SSM: precisa permissão de leitura em `arn:aws:ssm:us-east-2:089200327380:parameter/linear/*`
 
 **Se NÃO existir — criar:**
 
@@ -65,7 +65,7 @@ O ECS precisa de um **task execution role** para:
     {
       "Effect": "Allow",
       "Action": ["ssm:GetParameters", "ssm:GetParameter"],
-      "Resource": "arn:aws:ssm:us-west-2:089200327380:parameter/linear/*"
+      "Resource": "arn:aws:ssm:us-east-2:089200327380:parameter/linear/*"
     },
     {
       "Effect": "Allow",
@@ -73,7 +73,7 @@ O ECS precisa de um **task execution role** para:
       "Resource": "*",
       "Condition": {
         "StringEquals": {
-          "kms:ViaService": "ssm.us-west-2.amazonaws.com"
+          "kms:ViaService": "ssm.us-east-2.amazonaws.com"
         }
       }
     }
@@ -125,7 +125,7 @@ Se preferir role separada: crie `linearWorkerTaskRole` com trusted entity ECS Ta
 | Campo | Valor |
 |-------|--------|
 | **Name** | `linear-worker` |
-| **Image URI** | `089200327380.dkr.ecr.us-west-2.amazonaws.com/linear-worker:latest` |
+| **Image URI** | `089200327380.dkr.ecr.us-east-2.amazonaws.com/linear-worker:latest` |
 | **Essential container** | Sim |
 
 9. **Port mappings:** nenhuma (worker não expõe HTTP). Remova mapeamento 80 se existir.
@@ -153,12 +153,12 @@ Para cada linha, **Add environment variable** → marque **Value type: ValueFrom
 
 | Key | ValueFrom (ARN do parâmetro SSM) |
 |-----|----------------------------------|
-| `SUPABASE_URL` | `arn:aws:ssm:us-west-2:089200327380:parameter/linear/SUPABASE_URL` |
-| `SUPABASE_SERVICE_ROLE_KEY` | `arn:aws:ssm:us-west-2:089200327380:parameter/linear/SUPABASE_SERVICE_ROLE_KEY` |
-| `SUPABASE_DB_DSN` | `arn:aws:ssm:us-west-2:089200327380:parameter/linear/SUPABASE_DB_DSN` |
-| `OPENAI_API_KEY` | `arn:aws:ssm:us-west-2:089200327380:parameter/linear/OPENAI_API_KEY` |
-| `DORINA_API_URL` | `arn:aws:ssm:us-west-2:089200327380:parameter/linear/DORINA_API_URL` |
-| `DORINA_API_KEY` | `arn:aws:ssm:us-west-2:089200327380:parameter/linear/DORINA_API_KEY` |
+| `SUPABASE_URL` | `arn:aws:ssm:us-east-2:089200327380:parameter/linear/SUPABASE_URL` |
+| `SUPABASE_SERVICE_ROLE_KEY` | `arn:aws:ssm:us-east-2:089200327380:parameter/linear/SUPABASE_SERVICE_ROLE_KEY` |
+| `SUPABASE_DB_DSN` | `arn:aws:ssm:us-east-2:089200327380:parameter/linear/SUPABASE_DB_DSN` |
+| `OPENAI_API_KEY` | `arn:aws:ssm:us-east-2:089200327380:parameter/linear/OPENAI_API_KEY` |
+| `DORINA_API_URL` | `arn:aws:ssm:us-east-2:089200327380:parameter/linear/DORINA_API_URL` |
+| `DORINA_API_KEY` | `arn:aws:ssm:us-east-2:089200327380:parameter/linear/DORINA_API_KEY` |
 
 **Dica:** em Systems Manager → Parameter Store → clique no parâmetro → copie o **ARN**.
 
@@ -168,14 +168,14 @@ Para cada linha, **Add environment variable** → marque **Value type: ValueFrom
 |-------|--------|
 | Log driver | `awslogs` |
 | awslogs-group | `/ecs/linear-worker` |
-| awslogs-region | `us-west-2` |
+| awslogs-region | `us-east-2` |
 | awslogs-stream-prefix | `worker` |
 
 13. **Create** (final da task definition).
 
 ### Opção 2 — JSON
 
-1. Edite [`task-definition.worker.example.json`](task-definition.worker.example.json): troque `ACCOUNT_ID` → `089200327380`, `REGION` → `us-west-2`.
+1. Edite [`task-definition.worker.example.json`](task-definition.worker.example.json): troque `ACCOUNT_ID` → `089200327380`, `REGION` → `us-east-2`.
 2. ECS → Task definitions → **Create** → **Create new task definition with JSON**.
 3. Cole o JSON → **Create**.
 
@@ -235,7 +235,7 @@ Com a API ainda local ou depois na AWS: crie um job de teste. Nos logs do worker
 |---------|-------------|
 | Task para logo ao iniciar | Veja **Stopped reason** + log CloudWatch |
 | `ResourceInitializationError: unable to pull secrets` | IAM `ecsTaskExecutionRole` sem SSM/KMS |
-| `CannotPullContainerError` | URI da imagem; região ECR = us-west-2 |
+| `CannotPullContainerError` | URI da imagem; região ECR = us-east-2 |
 | Task para logo, log `set: Illegal option -` | Scripts `.sh` com CRLF (Windows) — ver nota abaixo |
 
 ### Windows: scripts `.sh` em LF

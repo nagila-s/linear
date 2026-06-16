@@ -290,7 +290,7 @@ Atualize `CORS_ORIGINS` no SSM com a URL real `.vercel.app` e force novo deploy 
 | Target **unhealthy** | SG: ALB não alcança API na 8000; ou `/health` falha |
 | 502 Bad Gateway | Task parada; veja logs `/ecs/linear-api` |
 | CORS no upload | `CORS_ORIGINS` sem URL da Vercel |
-| Circuit breaker | Secrets `us-west-2` na task (use **east**); imagem errada |
+| Circuit breaker | Secrets em região diferente da task; imagem errada |
 | Upload lento / timeout | Idle timeout do ALB (aumente para 300s) |
 
 ---

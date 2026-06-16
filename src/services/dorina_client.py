@@ -40,6 +40,8 @@ class DorinaService:
                 "documentType": self.settings.dorina_document_type,
             }
         }
+        if context.strip():
+            payload["data"]["context"] = context.strip()
         try:
             response = requests.post(
                 self.settings.dorina_api_url,

@@ -1,9 +1,9 @@
 # Exemplo: criar parametros SSM /linear/* a partir do .env local (NAO commitar este script preenchido).
 # Copie para setup-ssm-from-env.ps1 e execute uma vez com credenciais AWS configuradas.
 #
-# .\deploy\aws\setup-ssm-from-env.ps1 -Region us-west-2
+# .\deploy\aws\setup-ssm-from-env.ps1 -Region us-east-2
 
-param([string]$Region = "us-west-2")
+param([string]$Region = "us-east-2")
 
 $ErrorActionPreference = "Stop"
 $envFile = Join-Path $PSScriptRoot "..\..\.env"

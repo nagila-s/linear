@@ -25,14 +25,14 @@ Referência de variáveis: [`env.api.example`](env.api.example), [`env.worker.ex
 ## 2) Build e push (ECR)
 
 ```powershell
-.\deploy\aws\push-images.ps1 -Region us-west-2
+.\deploy\aws\push-images.ps1 -Region us-east-2
 ```
 
 ## 3) CloudWatch log groups
 
 ```bash
-aws logs create-log-group --log-group-name /ecs/linear-api --region us-west-2
-aws logs create-log-group --log-group-name /ecs/linear-worker --region us-west-2
+aws logs create-log-group --log-group-name /ecs/linear-api --region us-east-2
+aws logs create-log-group --log-group-name /ecs/linear-worker --region us-east-2
 ```
 
 ## 4) Worker ECS (primeiro)
