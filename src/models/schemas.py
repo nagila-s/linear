@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from src.models.enums import JobStatus, JobType
 
@@ -24,11 +24,19 @@ class JobResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     error_message: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
     prompt_version: Optional[str] = None
     openai_model: Optional[str] = None
     dorina_model: Optional[str] = None
     pipeline_mode: Optional[str] = None
     final_json_storage_path: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_db_row(cls, data: Any) -> Any:
+        if isinstance(data, dict) and not data.get("error_message") and data.get("erro"):
+            data = {**data, "error_message": data.get("erro")}
+        return data
 
 
 class HealthResponse(BaseModel):

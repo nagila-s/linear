@@ -71,6 +71,7 @@ export type FastApiJob = {
   status: string;
   etapa_atual: string;
   error_message?: string | null;
+  erro?: string | null;
   metadata?: { filename?: string; title?: string };
 };
 
@@ -163,10 +164,11 @@ export function mapJobToProcessStatus(job: FastApiJob): {
   }
 
   if (raw === "failed") {
+    const detail = (job.error_message || job.erro || "").trim();
     return {
       status: "error",
       progress: 0,
-      message: job.error_message || "Falha no processamento. Tente novamente.",
+      message: detail || "Falha no processamento. Tente novamente.",
       title: job.metadata?.title,
     };
   }

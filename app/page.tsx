@@ -29,6 +29,7 @@ export default function HomePage() {
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [progressOpen, setProgressOpen] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const uploadColumnRef = useRef<HTMLDivElement>(null);
   const formColumnRef = useRef<HTMLDivElement>(null);
 
@@ -204,7 +205,41 @@ export default function HomePage() {
         progress={status.progress}
         message={status.message}
         status={status.status}
+        retrying={retrying}
         onClose={() => setProgressOpen(false)}
+        onRetry={
+          jobId
+            ? async () => {
+                setRetrying(true);
+                try {
+                  const response = await fetch(`/api/process/${jobId}/retry`, { method: "POST" });
+                  const payload = (await response.json()) as ProcessStatusResponse & { error?: string };
+                  if (!response.ok) {
+                    setStatus((prev) => ({
+                      ...prev,
+                      status: "error",
+                      message: payload.error || "Não foi possível reenfileirar o processamento.",
+                    }));
+                    return;
+                  }
+                  setStatus((prev) => ({
+                    ...prev,
+                    status: "processing",
+                    progress: payload.progress ?? 10,
+                    message: payload.message ?? "Processamento reenfileirado. Aguarde...",
+                  }));
+                } catch {
+                  setStatus((prev) => ({
+                    ...prev,
+                    status: "error",
+                    message: "Não foi possível reenfileirar o processamento.",
+                  }));
+                } finally {
+                  setRetrying(false);
+                }
+              }
+            : undefined
+        }
         onDownload={() => {
           if (!jobId) return;
           const baseName = slugify(status.title || file?.name?.replace(/\.pdf$/i, "") || "livro");

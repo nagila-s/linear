@@ -165,6 +165,8 @@ class JobsRepository:
             UPDATE jobs
             SET
                 status = %s,
+                erro = NULL,
+                etapa_atual = 'preprocess',
                 updated_at = NOW()
             WHERE id = %s
         """

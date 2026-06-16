@@ -8,6 +8,8 @@ type ProgressModalProps = {
   status: "processing" | "done" | "error";
   onClose: () => void;
   onDownload: () => void;
+  onRetry?: () => void;
+  retrying?: boolean;
 };
 
 export function ProgressModal({
@@ -18,6 +20,8 @@ export function ProgressModal({
   status,
   onClose,
   onDownload,
+  onRetry,
+  retrying = false,
 }: ProgressModalProps) {
   if (!open) return null;
 
@@ -57,7 +61,9 @@ export function ProgressModal({
             style={{ width: `${Math.max(0, Math.min(progress, 100))}%` }}
           />
         </div>
-        <p className="mt-3 text-sm text-zinc-700">{message}</p>
+        <p className={`mt-3 text-sm ${status === "error" ? "text-red-700" : "text-zinc-700"}`}>
+          {status === "error" ? `Erro: ${message}` : message}
+        </p>
         <p className="mt-1 text-xs text-zinc-500">Progresso: {Math.round(progress)}%</p>
 
         <div className="mt-6 flex justify-end gap-3">
@@ -80,13 +86,25 @@ export function ProgressModal({
             </>
           ) : null}
           {status === "error" ? (
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-full border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-100"
-            >
-              Fechar
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-full border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-100"
+              >
+                Fechar
+              </button>
+              {onRetry ? (
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  disabled={retrying}
+                  className="rounded-full bg-amber-400 px-5 py-2 text-sm font-semibold text-zinc-900 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {retrying ? "Reenfileirando..." : "Tentar novamente"}
+                </button>
+              ) : null}
+            </>
           ) : null}
         </div>
       </div>
