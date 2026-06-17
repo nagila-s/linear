@@ -94,7 +94,7 @@ class ArtifactsRepository:
         """
         with get_conn() as conn:
             with conn.cursor() as cur:
-                description_text = str(payload.get("description") or payload.get("texto") or "")
+                description_text = str(payload.get("description") or payload.get("texto") or payload.get("caption") or "")
                 model_version = str(payload.get("model") or payload.get("model_version") or "unknown")
                 quality_flags = payload.get("quality_flags", {})
                 cur.execute(

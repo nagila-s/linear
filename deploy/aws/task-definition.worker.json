@@ -4,12 +4,12 @@
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "1024",
   "memory": "2048",
-  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
-  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/linearWorkerTaskRole",
+  "executionRoleArn": "arn:aws:iam::089200327380:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::089200327380:role/ecsTaskExecutionRole",
   "containerDefinitions": [
     {
       "name": "linear-worker",
-      "image": "ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/linear-worker:latest",
+      "image": "089200327380.dkr.ecr.us-east-2.amazonaws.com/linear-worker:latest",
       "essential": true,
       "environment": [
         { "name": "APP_ENV", "value": "production" },
@@ -24,18 +24,19 @@
         { "name": "DORINA_BRAILLE", "value": "true" }
       ],
       "secrets": [
-        { "name": "SUPABASE_URL", "valueFrom": "arn:aws:ssm:REGION:ACCOUNT_ID:parameter/linear/SUPABASE_URL" },
-        { "name": "SUPABASE_SERVICE_ROLE_KEY", "valueFrom": "arn:aws:ssm:REGION:ACCOUNT_ID:parameter/linear/SUPABASE_SERVICE_ROLE_KEY" },
-        { "name": "SUPABASE_DB_DSN", "valueFrom": "arn:aws:ssm:REGION:ACCOUNT_ID:parameter/linear/SUPABASE_DB_DSN" },
-        { "name": "OPENAI_API_KEY", "valueFrom": "arn:aws:ssm:REGION:ACCOUNT_ID:parameter/linear/OPENAI_API_KEY" },
-        { "name": "DORINA_API_URL", "valueFrom": "arn:aws:ssm:REGION:ACCOUNT_ID:parameter/linear/DORINA_API_URL" },
-        { "name": "DORINA_API_KEY", "valueFrom": "arn:aws:ssm:REGION:ACCOUNT_ID:parameter/linear/DORINA_API_KEY" }
+        { "name": "SUPABASE_URL", "valueFrom": "arn:aws:ssm:us-east-2:089200327380:parameter/linear/SUPABASE_URL" },
+        { "name": "SUPABASE_SERVICE_ROLE_KEY", "valueFrom": "arn:aws:ssm:us-east-2:089200327380:parameter/linear/SUPABASE_SERVICE_ROLE_KEY" },
+        { "name": "SUPABASE_DB_DSN", "valueFrom": "arn:aws:ssm:us-east-2:089200327380:parameter/linear/SUPABASE_DB_DSN" },
+        { "name": "OPENAI_API_KEY", "valueFrom": "arn:aws:ssm:us-east-2:089200327380:parameter/linear/OPENAI_API_KEY" },
+        { "name": "DORINA_API_URL", "valueFrom": "arn:aws:ssm:us-east-2:089200327380:parameter/linear/DORINA_API_URL" },
+        { "name": "DORINA_API_KEY", "valueFrom": "arn:aws:ssm:us-east-2:089200327380:parameter/linear/DORINA_API_KEY" }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
           "awslogs-group": "/ecs/linear-worker",
-          "awslogs-region": "REGION",
+          "awslogs-create-group": "true",
+          "awslogs-region": "us-east-2",
           "awslogs-stream-prefix": "worker"
         }
       }

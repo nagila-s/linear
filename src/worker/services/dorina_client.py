@@ -1,3 +1,5 @@
+import asyncio
+
 from src.services.dorina_client import DorinaService
 
 
@@ -16,7 +18,8 @@ class DorinaClient:
         prompt_version: str = "v1",
         braille: bool = False,
     ) -> dict:
-        response = self._service.describe_figure(
+        response = await asyncio.to_thread(
+            self._service.describe_figure,
             image_url=image_url,
             isbn="",
             context=context,

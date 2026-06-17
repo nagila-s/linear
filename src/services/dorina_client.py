@@ -58,6 +58,12 @@ class DorinaService:
                 raise IntegrationError(f"Dorina upstream_5xx_error ({response.status_code}): {response.text[:500]}")
             raise IntegrationError(f"Dorina upstream_4xx_error ({response.status_code}): {response.text[:500]}")
         data = response.json()
-        if "description" not in data:
-            data["description"] = data.get("texto", "")
+        if not isinstance(data, dict):
+            raise IntegrationError(f"Dorina resposta invalida: {str(data)[:300]}")
+        if data.get("error"):
+            raise IntegrationError(f"Dorina error: {str(data.get('error'))[:500]}")
+        description = str(
+            data.get("description") or data.get("texto") or data.get("caption") or ""
+        ).strip()
+        data["description"] = description
         return data

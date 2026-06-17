@@ -14,7 +14,11 @@ async def run(ctx: dict) -> dict:
 
     pdf_bytes = storage.download_by_storage_path(pdf_path)
     pages = preprocess_pdf(pdf_bytes, dpi=dpi)
-    extracted_figures = extract_images_from_pdf(pdf_bytes, render_dpi=dpi)
+    extracted_figures = extract_images_from_pdf(
+        pdf_bytes,
+        render_dpi=dpi,
+        render_fallback_dpi=dpi,
+    )
 
     page_results = []
     page_id_by_number: dict[int, str] = {}
@@ -38,6 +42,8 @@ async def run(ctx: dict) -> dict:
         )
 
     figures_by_page: dict[int, list[dict]] = {}
+    figure_keys_by_page: dict[int, list[str]] = {}
+    figures: list[dict] = []
     figures_by_page_counter: dict[int, int] = {}
     ordered_figures = sorted(extracted_figures, key=lambda item: (item.page_number, item.image_index))
     for item in ordered_figures:
@@ -63,16 +69,19 @@ async def run(ctx: dict) -> dict:
             figure_index=current_idx,
             storage_path=figure_storage_path,
         )
-        figures_by_page.setdefault(page_number, []).append(
-            {
-                "figure_id": str(figure_id),
-                "figure_index": current_idx,
-                "figure_key": f"fig{current_idx}",
-                "page_number": page_number,
-                "storage_path": figure_storage_path,
-            }
-        )
+        figure_entry = {
+            "figure_id": str(figure_id),
+            "figure_index": current_idx,
+            "figure_key": f"fig{current_idx}",
+            "page_number": page_number,
+            "storage_path": figure_storage_path,
+        }
+        figures_by_page.setdefault(page_number, []).append(figure_entry)
+        figure_keys_by_page.setdefault(page_number, []).append(figure_entry["figure_key"])
+        figures.append(figure_entry)
 
     ctx["pages"] = page_results
+    ctx["figures"] = figures
     ctx["figures_by_page"] = figures_by_page
+    ctx["figure_keys_by_page"] = figure_keys_by_page
     return ctx

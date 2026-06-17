@@ -5,6 +5,7 @@ from uuid import UUID
 from psycopg.rows import dict_row
 
 from src.core.config import get_settings
+from src.core.errors import IntegrationError
 from src.models.enums import JobType
 from src.repositories.artifacts import ArtifactsRepository
 from src.repositories.db import get_conn
@@ -16,6 +17,29 @@ from src.worker.services.dorina_client import DorinaClient
 from src.worker.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _sample_dorina_failure(descriptions: list) -> str:
+    for item in descriptions:
+        if str(item.get("status")) == "ok":
+            continue
+        payload = item.get("payload")
+        if isinstance(payload, dict):
+            for key in ("error", "message", "error_message"):
+                value = str(payload.get(key) or "").strip()
+                if value:
+                    return value[:400]
+            caption = str(payload.get("caption") or "").strip()
+            description = str(payload.get("description") or "").strip()
+            if caption and not description:
+                return (
+                    "Dorina retornou texto em 'caption', mas 'description' veio vazio. "
+                    "Atualize o worker para a versao corrigida."
+                )
+        detail = str(item.get("error_message") or "").strip()
+        if detail:
+            return detail[:400]
+    return "Resposta da Dorina sem texto utilizavel (ver descriptions.json no storage)."
 
 
 def _load_job_data(job_id: str) -> dict[str, Any]:
@@ -45,6 +69,7 @@ async def run(job: dict, _queue) -> dict:
         ),
     )
     prompt_version = str(job_data.get("prompt_version") or settings.linear_prompt_version)
+    dorina_prompt_version = app_settings.dorina_prompt_version
 
     if str(job_data.get("job_type")) != JobType.LINEARIZAR.value:
         raise ValueError(
@@ -79,8 +104,38 @@ async def run(job: dict, _queue) -> dict:
     ctx = await extract_images.run(ctx)
     await asyncio.to_thread(jobs_repo.update_stage, job_id, "linearize")
     ctx = await describe.run(ctx)
+
+    described_count = int(ctx.get("described_count") or 0)
+    failed_count = int(ctx.get("failed_count") or 0)
+    if failed_count > 0 and described_count == 0:
+        sample_error = _sample_dorina_failure(ctx.get("descriptions", []))
+        raise IntegrationError(
+            "Dorina nao descreveu nenhuma figura "
+            f"({failed_count} falha(s)). {sample_error}"
+        )
+
     await asyncio.to_thread(jobs_repo.update_stage, job_id, "assemble")
 
+    linear_payload = {
+        "isbn": ctx["isbn"],
+        "job_id": ctx["job_id"],
+        "prompt_version": prompt_version,
+        "process_version": process_version,
+        "dpi": ctx["pdf_render_dpi"],
+        "pages": ctx["linearized_pages"],
+    }
+    context_payload = {
+        "isbn": ctx["isbn"],
+        "job_id": ctx["job_id"],
+        "prompt_version": prompt_version,
+        "contexts": ctx.get("contexts", {}),
+    }
+    descriptions_payload = {
+        "isbn": ctx["isbn"],
+        "job_id": ctx["job_id"],
+        "prompt_version": dorina_prompt_version,
+        "descriptions": ctx.get("descriptions", []),
+    }
     final_payload = {
         "isbn": ctx["isbn"],
         "job_id": ctx["job_id"],
@@ -89,6 +144,10 @@ async def run(job: dict, _queue) -> dict:
         "process_version": process_version,
         "dpi": ctx["pdf_render_dpi"],
         "pages": ctx["linearized_pages"],
+        "image_context": [
+            {"figure_key": key, "context": value}
+            for key, value in sorted(ctx.get("contexts", {}).items())
+        ],
         "descriptions": ctx.get("descriptions", []),
     }
 
@@ -98,7 +157,23 @@ async def run(job: dict, _queue) -> dict:
         process_version,
         ctx["job_id"],
         "linear.json",
-        final_payload,
+        linear_payload,
+    )
+    await asyncio.to_thread(
+        storage.upload_json,
+        ctx["isbn"],
+        process_version,
+        ctx["job_id"],
+        "contexts.json",
+        context_payload,
+    )
+    await asyncio.to_thread(
+        storage.upload_json,
+        ctx["isbn"],
+        process_version,
+        ctx["job_id"],
+        "descriptions.json",
+        descriptions_payload,
     )
     final_storage_path = await asyncio.to_thread(
         storage.upload_json,

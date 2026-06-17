@@ -48,7 +48,7 @@ Exemplo:
 Os únicos valores válidos para o campo "tipo" são:
 
 titulo_1 | titulo_2 | titulo_3 | titulo_4 | titulo_5
-paragrafo | lista | tabela | quadro | quadro_comparativo | imagem | nota | nota_rodape | glossario_inline | atividade | fonte | sumario | item | subitem
+paragrafo | lista | tabela | quadro | quadro_comparativo | boxe_complementar | ficha_catalografica | imagem | nota | nota_rodape | glossario_inline | atividade | fonte | sumario | item | subitem
 
 Regras:
 - Escreva sempre sem acento e sem caracteres especiais: "paragrafo", "sumario" — nunca "parágrafo", "sumário".
@@ -191,18 +191,37 @@ REMOVA fontes que sejam apenas créditos de banco de imagens (Shutterstock, Gett
 MANTENHA fontes que referenciem autor, livro, página, instituição de pesquisa, periódico ou URL de conteúdo.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[QUADRO — box pedagógico]
+[BOXE_COMPLEMENTAR — conteúdo extra destacado visualmente]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Use "quadro" para qualquer bloco visual destacado (caixa, box, moldura, fundo colorido) que apresente conteúdo complementar corrido — definição, curiosidade, regra, destaque pedagógico, texto de apoio, glossário lateral, nota do autor, estratégia de leitura, etc.
-O conteúdo interno de um quadro é texto corrido, listas ou parágrafos — não tem estrutura de linhas e colunas.
-Nunca use "box" — use sempre "quadro".
-Exponha integralmente o conteúdo do quadro, mesmo que esteja visualmente sobreposto ou parcialmente coberto por outros elementos.
+Use "boxe_complementar" para qualquer bloco visual destacado (caixa, moldura, fundo colorido) cujo conteúdo seja complementar ao fluxo principal — ou seja, se fosse removido, o texto principal continuaria completo e coerente.
+São exemplos: "Saiba mais", "Curiosidade", "Para saber mais", "Leitura complementar", "Desafio", "Orientação didática", definições isoladas, glossário lateral, estratégia de leitura, regra gramatical em destaque.
+O conteúdo interno é texto corrido, listas ou parágrafos — não tem estrutura de colunas.
+Nunca use "box" ou "quadro" para este tipo de conteúdo.
+Exponha integralmente o conteúdo, mesmo que esteja visualmente sobreposto ou parcialmente coberto.
+
+{
+  "tipo": "boxe_complementar",
+  "titulo_boxe": "Saiba mais" | null,
+  "subtipo": "definicao" | "curiosidade" | "regra" | "destaque" | "texto_apoio" | "glossario" | "estrategia" | "mapa_conceitual" | "outro",
+  "conteudo": [ ...blocos usando os mesmos tipos permitidos... ]
+}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[QUADRO — estrutura comparativa ou organizacional]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Use "quadro" para estruturas visuais que organizam informações em linhas e colunas com conteúdo textual — semelhante a uma tabela, mas com conteúdo qualitativo em vez de dados pontuais.
+O quadro tem estrutura, não é texto corrido: cada célula contém um conceito, item ou descrição organizado visualmente em grade.
+
+NÃO use "quadro" para:
+- Boxes com conteúdo corrido complementar — use "boxe_complementar".
+- Seções do conteúdo principal com fundo colorido por estilo editorial — use titulo_3, titulo_5 e paragrafo.
+- Fichas catalográficas — use "ficha_catalografica".
 
 {
   "tipo": "quadro",
-  "titulo_quadro": "Saiba mais" | null,
-  "subtipo": "definicao" | "curiosidade" | "regra" | "destaque" | "texto_apoio" | "glossario" | "estrategia" | "mapa_conceitual" | "outro",
+  "titulo_quadro": null,
   "conteudo": [ ...blocos usando os mesmos tipos permitidos... ]
 }
 
@@ -210,11 +229,13 @@ Exponha integralmente o conteúdo do quadro, mesmo que esteja visualmente sobrep
 [QUADRO_COMPARATIVO — estrutura de comparação]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Use "quadro_comparativo" quando o conteúdo estiver organizado em colunas temáticas para comparar conceitos, categorias ou informações — mesmo que visualmente pareça uma tabela.
+Use "quadro_comparativo" quando o conteúdo estiver organizado em colunas temáticas para comparar ou agrupar conceitos, categorias ou informações — mesmo que visualmente pareça uma tabela.
 
 Difere da "tabela" porque:
-- "tabela" → dados quantitativos, estatísticos ou tabulares com cabeçalho e células de dados (ex.: tabela de preços, planilha, CIP bibliográfica)
-- "quadro_comparativo" → comparação qualitativa entre conceitos, lados, categorias (ex.: coluna "Célula animal" vs "Célula vegetal", coluna "Vantagens" vs "Desvantagens", dois textos em colunas para comparar argumentos)
+- "tabela" → dados quantitativos ou estatísticos com cabeçalho e células de dados pontuais (ex.: tabela de preços, cronograma, gabarito)
+- "quadro_comparativo" → agrupamento ou comparação qualitativa entre conceitos, categorias ou exemplos (ex.: coluna "Célula animal" vs "Célula vegetal"; lista de países agrupados por região; pares de termos relacionados)
+
+Fichas catalográficas (CIP): use o tipo "ficha_catalografica" (ver seção específica) — nunca classifique como tabela, quadro ou quadro_comparativo.
 
 {
   "tipo": "quadro_comparativo",
@@ -249,6 +270,27 @@ Use "tabela" para dados tabulares com cabeçalho e células de dados: tabelas es
   ],
   "fonte": null
 }
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[FICHA CATALOGRÁFICA]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Use "ficha_catalografica" para a ficha catalográfica (CIP) e dados de edição do livro: ISBN, dados de catalogação, edição, créditos de autoria, direitos autorais e informações bibliográficas da obra.
+Não classifique como tabela, quadro ou quadro_comparativo — mesmo que visualmente esteja formatada em colunas ou caixas.
+Registre o conteúdo como lista de campos no formato chave-valor, preservando os dados na íntegra.
+
+{
+  "tipo": "ficha_catalografica",
+  "conteudo": [
+    { "campo": "Título", "valor": "Língua Portuguesa — 6.º ano" },
+    { "campo": "Autores", "valor": "Ana Lima, Carlos Souza" },
+    { "campo": "ISBN", "valor": "978-85-123-456-7" },
+    { "campo": "Edição", "valor": "3. ed." },
+    { "campo": "CIP", "valor": "1. Língua portuguesa. 2. Ensino fundamental. I. Título." }
+  ]
+}
+
+Quando o dado não tiver um rótulo claro, use o campo "texto" com o conteúdo literal.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [NOTAS]

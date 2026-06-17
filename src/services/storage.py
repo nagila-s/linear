@@ -113,7 +113,7 @@ class StorageService:
     def signed_json_url(self, isbn: str, process_version: str, job_id: str, file_name: str, expires_in: int = 3600) -> str:
         path = f"{isbn}/{process_version}/{job_id}/{file_name}"
         result = self.client.storage.from_(self.settings.bucket_json).create_signed_url(path, expires_in)
-        return result.get("signedURL", "")
+        return result.get("signedURL") or result.get("signedUrl") or ""
 
     def signed_url_for_storage_path(self, storage_path: str, expires_in: int = 3600) -> str:
         normalized = storage_path.strip().lstrip("/")
@@ -121,7 +121,7 @@ class StorageService:
             raise IntegrationError("storage_path invalido para URL assinada.")
         bucket, path = normalized.split("/", 1)
         result = self.client.storage.from_(bucket).create_signed_url(path, expires_in)
-        return result.get("signedURL", "")
+        return result.get("signedURL") or result.get("signedUrl") or ""
 
     def create_pdf_upload_url(self, isbn: str, process_version: str) -> dict[str, str]:
         object_path = f"{isbn}/{process_version}/original.pdf"
