@@ -48,7 +48,7 @@ Exemplo:
 Os únicos valores válidos para o campo "tipo" são:
 
 titulo_1 | titulo_2 | titulo_3 | titulo_4 | titulo_5
-paragrafo | lista | tabela | quadro | quadro_comparativo | boxe_complementar | ficha_catalografica | imagem | nota | nota_rodape | glossario_inline | atividade | fonte | sumario | item | subitem
+paragrafo | lista | tabela | quadro | boxe_complementar | ficha_catalografica | imagem | nota | nota_rodape | glossario_inline | atividade | fonte | sumario | item | subitem
 
 Regras:
 - Escreva sempre sem acento e sem caracteres especiais: "paragrafo", "sumario" — nunca "parágrafo", "sumário".
@@ -195,7 +195,7 @@ MANTENHA fontes que referenciem autor, livro, página, instituição de pesquisa
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Use "boxe_complementar" para qualquer bloco visual destacado (caixa, moldura, fundo colorido) cujo conteúdo seja complementar ao fluxo principal — ou seja, se fosse removido, o texto principal continuaria completo e coerente.
-São exemplos: "Saiba mais", "Curiosidade", "Para saber mais", "Leitura complementar", "Desafio", "Orientação didática", definições isoladas, glossário lateral, estratégia de leitura, regra gramatical em destaque.
+São exemplos: "Saiba mais", "Curiosidade", "Para saber mais", "Leitura complementar", "Desafio", definições isoladas, glossário lateral, estratégia de leitura, regra gramatical em destaque.
 O conteúdo interno é texto corrido, listas ou parágrafos — não tem estrutura de colunas.
 Nunca use "box" ou "quadro" para este tipo de conteúdo.
 Exponha integralmente o conteúdo, mesmo que esteja visualmente sobreposto ou parcialmente coberto.
@@ -208,38 +208,35 @@ Exponha integralmente o conteúdo, mesmo que esteja visualmente sobreposto ou pa
 }
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[QUADRO — estrutura comparativa ou organizacional]
+[QUADRO — estrutura organizacional ou comparativa]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Use "quadro" para estruturas visuais que organizam informações em linhas e colunas com conteúdo textual — semelhante a uma tabela, mas com conteúdo qualitativo em vez de dados pontuais.
-O quadro tem estrutura, não é texto corrido: cada célula contém um conceito, item ou descrição organizado visualmente em grade.
+Use "quadro" para estruturas visuais que organizam informações com conteúdo qualitativo — semelhante a uma tabela, mas com conceitos, descrições ou categorias em vez de dados pontuais.
+Inclui tanto quadros de uma única coluna quanto quadros comparativos de múltiplas colunas.
 
 NÃO use "quadro" para:
 - Boxes com conteúdo corrido complementar — use "boxe_complementar".
 - Seções do conteúdo principal com fundo colorido por estilo editorial — use titulo_3, titulo_5 e paragrafo.
 - Fichas catalográficas — use "ficha_catalografica".
 
+Informe sempre o campo "num_colunas", mesmo quando for 1.
+
+Quadro de uma coluna (num_colunas: 1): use "conteudo" com array de blocos.
+Quadro de múltiplas colunas (num_colunas > 1): use "colunas" com cabecalho e conteudo por coluna.
+
+Exemplo com 1 coluna:
 {
   "tipo": "quadro",
-  "titulo_quadro": null,
+  "titulo_quadro": "Orientação didática" | null,
+  "num_colunas": 1,
   "conteudo": [ ...blocos usando os mesmos tipos permitidos... ]
 }
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[QUADRO_COMPARATIVO — estrutura de comparação]
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Use "quadro_comparativo" quando o conteúdo estiver organizado em colunas temáticas para comparar ou agrupar conceitos, categorias ou informações — mesmo que visualmente pareça uma tabela.
-
-Difere da "tabela" porque:
-- "tabela" → dados quantitativos ou estatísticos com cabeçalho e células de dados pontuais (ex.: tabela de preços, cronograma, gabarito)
-- "quadro_comparativo" → agrupamento ou comparação qualitativa entre conceitos, categorias ou exemplos (ex.: coluna "Célula animal" vs "Célula vegetal"; lista de países agrupados por região; pares de termos relacionados)
-
-Fichas catalográficas (CIP): use o tipo "ficha_catalografica" (ver seção específica) — nunca classifique como tabela, quadro ou quadro_comparativo.
-
+Exemplo com múltiplas colunas:
 {
-  "tipo": "quadro_comparativo",
+  "tipo": "quadro",
   "titulo_quadro": "Célula animal vs Célula vegetal" | null,
+  "num_colunas": 2,
   "colunas": [
     {
       "cabecalho": "Célula animal",
@@ -252,11 +249,17 @@ Fichas catalográficas (CIP): use o tipo "ficha_catalografica" (ver seção espe
   ]
 }
 
+Difere da "tabela" porque:
+- "tabela" → dados quantitativos ou estatísticos com células de dados pontuais (ex.: tabela de preços, cronograma, gabarito, ranking)
+- "quadro" → agrupamento ou comparação qualitativa entre conceitos, categorias ou exemplos
+
+Fichas catalográficas (CIP): use o tipo "ficha_catalografica" — nunca classifique como tabela ou quadro.
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [TABELAS]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Use "tabela" para dados tabulares com cabeçalho e células de dados: tabelas estatísticas, preços, cronogramas, fichas catalográficas, gabaritos e qualquer estrutura em que cada célula seja um dado pontual.
+Use "tabela" para dados tabulares com cabeçalho e células de dados: tabelas estatísticas, preços, cronogramas, fichas catalográficas, gabaritos, tabelas de ranking ou classificação (ex.: 1.º lugar, 2.º lugar) e qualquer estrutura em que cada célula seja um dado pontual.
 
 {
   "tipo": "tabela",
@@ -301,7 +304,7 @@ Existem três tipos distintos de nota. Nunca os confunda entre si nem com "fonte
 ──────────────────────────────────────
 nota — instrução ou observação editorial
 ──────────────────────────────────────
-Use "nota" para qualquer texto auxiliar em tamanho reduzido que seja uma observação do editor ou instrução ao aluno: "Não escreva no livro", esclarecimentos marginais, traduções, comentários do autor.
+Use "nota" para qualquer texto auxiliar que seja uma observação do editor, instrução ao aluno ou orientação ao professor: "Não escreva no livro", esclarecimentos marginais, traduções, comentários do autor, orientações didáticas.
 Não tem chamada no texto. Não define termos.
 
 { "tipo": "nota", "texto": "Não escreva no livro." }
@@ -369,10 +372,13 @@ Os valores de "nivel" seguem a mesma hierarquia de titulo_1 a titulo_5.
    - Siglas e acrônimos permanecem em maiúsculas (ex.: ONU, PIB, DNA).
    - Termos científicos: gênero com maiúscula, espécie em minúscula (ex.: Homo sapiens).
    - Meses, dias da semana e idiomas em minúscula.
-   - Não altere trechos que estejam em caixa alta por razão editorial legítima e identificável (ex.: siglas, fórmulas químicas, rótulos de eixo em gráfico).
+   - Não altere apenas: siglas e acrônimos (ONU, PIB, DNA), fórmulas químicas, rótulos de eixo em gráfico, e palavras ou expressões isoladas em caixa alta dentro de um trecho em caixa mista — nesses casos a caixa alta indica ênfase pontual e intencional.
+   - Livros infantis usam caixa alta por convenção tipográfica, não por ênfase. Títulos de seção, enunciados de atividade, poemas e qualquer bloco inteiramente em maiúsculas devem ser normalizados normalmente.
 
 6. CONSISTÊNCIA: use exatamente os mesmos nomes de tipo, chave e estilo em toda a resposta. Consulte a lista de tipos permitidos antes de usar qualquer valor.
 
 7. PAGINAÇÃO: o número de página é sempre o impresso fisicamente no livro. Quando ausente, use "[sem página]". Não gere blocos de conteúdo para números de página.
 
 8. NADA ALÉM DO JSON: retorne apenas o objeto JSON, sem texto introdutório, sem markdown, sem blocos de código.
+
+9. QUEBRAS DE LINHA EM VERSOS: em poemas, letras de música e textos versificados, separe os versos com \n dentro da string de texto. Nunca use / ou qualquer outro separador.

@@ -21,7 +21,13 @@
         { "name": "BUCKET_FIGURES", "value": "figures" },
         { "name": "BUCKET_JSON", "value": "json" },
         { "name": "DORINA_API_KEY_HEADER", "value": "Authorization" },
-        { "name": "DORINA_BRAILLE", "value": "true" }
+        { "name": "DORINA_BRAILLE", "value": "true" },
+        { "name": "OPENAI_MODEL_LINEARIZATION", "value": "gpt-5.2" },
+        { "name": "OPENAI_MODEL_CONTEXT", "value": "gpt-5.2" },
+        { "name": "PDF_RENDER_DPI", "value": "120" },
+        { "name": "LINEARIZATION_PROMPT_FILE", "value": "prompt.txt" },
+        { "name": "LINEAR_PIPELINE_ONLY", "value": "true" },
+        { "name": "LINEARIZE_PAGE_CONCURRENCY", "value": "4" }
       ],
       "secrets": [
         { "name": "SUPABASE_URL", "valueFrom": "arn:aws:ssm:us-east-2:089200327380:parameter/linear/SUPABASE_URL" },
