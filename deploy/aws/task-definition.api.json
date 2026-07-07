@@ -36,7 +36,7 @@
         { "name": "OPENAI_MODEL_LINEARIZATION", "value": "gpt-5.2" },
         { "name": "OPENAI_MODEL_CONTEXT", "value": "gpt-5.2" },
         { "name": "PDF_RENDER_DPI", "value": "120" },
-        { "name": "LINEAR_PROMPT_VERSION", "value": "v2" }
+        { "name": "LINEAR_PROMPT_VERSION", "value": "v3" }
       ],
       "secrets": [
         { "name": "SUPABASE_URL", "valueFrom": "arn:aws:ssm:us-east-2:089200327380:parameter/linear/SUPABASE_URL" },

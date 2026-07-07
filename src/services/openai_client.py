@@ -1,7 +1,6 @@
 import base64
 import json
 import logging
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
@@ -29,13 +28,10 @@ class OpenAIService:
             raise IntegrationError("OPENAI_API_KEY nao configurado.")
         self.settings = settings
         self.client = OpenAI(api_key=settings.openai_api_key)
-        self.linearization_prompt = self._load_linearization_prompt()
         self.prompt_router = PromptRouter(
             settings.prompts_directory,
             window_start=settings.classification_window_start,
             window_end=settings.classification_window_end,
-            legacy_base_prompt=self.linearization_prompt,
-            specialized_prompts_file=settings.specialized_prompts_file,
         )
 
     @retry(wait=wait_exponential(multiplier=1, min=1, max=10), stop=stop_after_attempt(3), reraise=True)
@@ -147,7 +143,7 @@ class OpenAIService:
             or total_pages is None
             or total_pages <= 0
         ):
-            return self.linearization_prompt, "conteudo"
+            return self.prompt_router.get_prompt("conteudo"), "conteudo"
 
         if not self.prompt_router.should_classify(page_number, total_pages):
             page_type = "conteudo"
@@ -360,20 +356,6 @@ class OpenAIService:
                     if isinstance(txt, str) and txt.strip():
                         parts.append(txt.strip())
         return "\n".join(parts).strip()
-
-    def _load_linearization_prompt(self) -> str:
-        fallback = (
-            "Estruture semanticamente esta pagina para leitura acessivel. "
-            "Retorne somente JSON com blocos ordenados e referencias de figuras."
-        )
-        raw_path = (self.settings.linearization_prompt_file or "").strip()
-        if not raw_path:
-            return fallback
-        prompt_path = Path(raw_path)
-        if not prompt_path.exists():
-            return fallback
-        content = prompt_path.read_text(encoding="utf-8").strip()
-        return content or fallback
 
     @staticmethod
     def _extract_json(content: str) -> Dict[str, Any]:

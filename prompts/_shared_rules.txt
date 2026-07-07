@@ -12,5 +12,14 @@ Campos e valores de "tipo" sempre em português sem acento. Conteúdo extraído 
 - Retorne apenas JSON válido, sem markdown.
 - Números de página impressos no livro vão só no campo raiz "pagina".
 - Tipos de bloco permitidos: titulo_1..titulo_5, paragrafo, lista, tabela, quadro, boxe_complementar, ficha_catalografica, imagem, nota, nota_rodape, glossario, glossario_inline, atividade, fonte, link, sumario, item, subitem.
-- Imagens: use tipo "imagem" com id fig1, fig2…; não descreva o visual (descricao = "[imagem presente]").
 - Use \n para quebras de linha dentro de strings JSON.
+
+[IMAGENS]
+- Use tipo "imagem" com id sequencial por página: fig1, fig2…
+- Nunca descreva o conteúdo visual. O campo "descricao" é sempre "[imagem presente]".
+- O campo "contexto_pedagogico" deve ser preenchido APENAS quando houver uma referência explícita e identificável no texto ou na atividade da página — uma menção direta à imagem ou uma questão que depende dela.
+- Quando não houver referência identificável, use null. Nunca escreva explicações sobre a ausência de contexto, como "figura não identificável" ou "não há referência explícita". O valor deve ser null e ponto.
+
+[FONTES]
+- Use tipo "fonte" apenas para referências bibliográficas completas: Autor. Título. Editora, Ano.
+- Remova créditos de bancos de imagem (Shutterstock, Getty, Alamy, iStock) e nomes simples sem referência bibliográfica (ex.: "Felipe", "Acervo da editora", "Nome/Banco").

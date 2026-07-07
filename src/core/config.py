@@ -32,10 +32,8 @@ class Settings(BaseSettings):
     classifier_max_output_tokens: int = 16
     prompt_routing_enabled: bool = True
     prompts_directory: str = "prompts"
-    specialized_prompts_file: str = "prompts_especializados.txt"
     classification_window_start: int = 20
     classification_window_end: int = 15
-    linearization_prompt_file: str = "prompt.txt"
     linear_prompt_version: str = "v1"
     context_prompt_version: str = "v1"
     dorina_prompt_version: str = "v1"

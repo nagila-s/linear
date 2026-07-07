@@ -1,13 +1,19 @@
 Observe esta imagem de página de livro didático e responda com exatamente uma palavra da lista abaixo.
 
-capa            → capa, contracapa, orelha, folha de rosto, página de abertura de unidade/capítulo com imagem grande
-ficha           → ficha catalográfica (CIP), ISBN, dados de edição, créditos da obra
-apresentacao    → carta ao aluno, apresentação do livro, prefácio, sobre esta obra
+capa            → capa, folha de rosto, página de abertura com título e nome de editora
+autores         → página exclusiva com biografia ou apresentação dos autores do livro, com foto ou sem
+ficha           → ficha catalográfica (CIP), ISBN, dados de edição, lista de responsáveis pela produção do livro (direção, edição, diagramação, etc.), direitos autorais
+apresentacao    → carta ao aluno, carta ao professor, prefácio, texto de apresentação da obra dirigido ao leitor
 conheca         → "conheça seu livro", guia de uso, legenda de ícones e seções da coleção
-sumario         → sumário ou índice do livro
-hino            → Hino Nacional Brasileiro ou outro hino
-referencias     → referências bibliográficas, bibliografia, fontes consultadas
-contracapa      → contracapa, quarta capa, texto de apresentação da coleção no verso
-conteudo        → qualquer página com conteúdo didático: texto, exercícios, imagens pedagógicas
+sumario         → sumário ou índice do livro com títulos e números de página
+hino            → Hino Nacional Brasileiro ou outro hino oficial
+referencias     → referências bibliográficas, bibliografia, fontes consultadas — lista de obras citadas
+contracapa      → contracapa ou quarta capa — verso da capa com texto de apresentação da coleção, sem lista de créditos
+conteudo        → qualquer página com conteúdo didático: texto expositivo, exercícios, imagens pedagógicas, capítulos, unidades
+
+Atenção:
+- "ficha" é exclusivo para créditos de produção e dados catalográficos — nunca para texto corrido
+- "contracapa" é o verso físico da capa — nunca confundir com ficha de créditos
+- "autores" é exclusivo para página dedicada à biografia dos autores
 
 Responda apenas com a palavra, sem explicação, sem pontuação.

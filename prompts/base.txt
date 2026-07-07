@@ -214,22 +214,28 @@ MANTENHA fontes que referenciem autor, livro, página, instituição de pesquisa
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [QUADRO e TABELA — estruturas em grade]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
+ 
 Use "quadro" ou "tabela" SOMENTE quando o conteúdo estiver organizado em uma grade visual explícita de linhas e colunas — com bordas, linhas divisórias ou células claramente delimitadas.
-
-O critério é EXCLUSIVAMENTE a presença de grade:
-- Se tem grade E tem linha de título/cabeçalho na primeira linha → "tabela"
-- Se tem grade E NÃO tem linha de título/cabeçalho → "quadro"
+ 
+O critério é EXCLUSIVAMENTE a presença de grade E de título:
+- Se tem grade E a primeira célula funciona como título do conjunto (ex.: "Conto maravilhoso: construção e recursos expressivos") → "tabela"
+- Se tem grade E NÃO tem título — apenas dados ou conteúdo nas células → "quadro"
 - Se NÃO tem grade → não é quadro nem tabela, independentemente de ter fundo colorido, borda decorativa ou moldura
-
+ 
+Atenção: cabeçalhos de coluna (ex.: "Brasil" / "Portugal") NÃO são título — são parte da estrutura do quadro. Só há tabela quando existe uma linha ou célula de título que nomeia o conjunto inteiro.
+ 
 Exemplos:
 - Grade com "Conto maravilhoso: construção e recursos expressivos" na primeira linha → tabela
-- Grade de duas colunas "Brasil / Portugal" sem título acima da grade → quadro
-- Texto com fundo azul, box com título, seção com borda → NÃO é quadro nem tabela — tratar como conteúdo normal (titulo_3, paragrafo, lista, etc.)
-
-Todo conteúdo que não for uma grade explícita deve ser marcado com os tipos normais do fluxo de leitura, mesmo que visualmente esteja dentro de um destaque, moldura ou box colorido.
-Quando uma grade contiver texto, esse texto deve ser extraído e representado nas células — nunca classificar uma grade como "imagem" só porque ela parece complexa visualmente. Diagramas que misturam texto e elementos gráficos: extraia todo o texto legível e use "imagem" com classificacao "diagrama" apenas para o elemento gráfico.
-
+- Grade de duas colunas com "Brasil" e "Portugal" como cabeçalhos, sem título geral → quadro
+- Texto com fundo colorido, box com título, seção com borda → NÃO é quadro nem tabela — tratar como conteúdo normal
+ 
+Todo conteúdo que não for uma grade explícita deve ser marcado com os tipos normais do fluxo de leitura.
+Quando uma grade contiver texto, extraia-o e represente nas células — nunca classifique uma grade como "imagem" por ser visualmente complexa.
+ 
+Campos de quadro e tabela:
+- "titulo_tabela": incluir APENAS se houver título. Se não houver título, não é uma tabela, é um quadro — nunca usar null.
+- "titulo_quadro": não existe, se tem título é uma tabela. 
+ 
 {
   "tipo": "tabela",
   "titulo_tabela": "Conto maravilhoso: construção e recursos expressivos",
@@ -239,13 +245,13 @@ Quando uma grade contiver texto, esse texto deve ser extraído e representado na
   "linhas": [
     ["Quem são os leitores dos contos maravilhosos?", ""],
     ["Qual é o objetivo desses textos?", ""]
-  ],
-  "fonte": null
+  ]
 }
-
+ 
 {
   "tipo": "quadro",
-  "titulo_quadro": null,
+  "num_colunas": 2,
+  "num_linhas": 3,
   "colunas": [
     { "cabecalho": "Brasil",   "conteudo": ["ônibus", "abridor de garrafas", "aeromoça"] },
     { "cabecalho": "Portugal", "conteudo": ["autocarro", "tira-cápsula", "hospedeira"] }
