@@ -1,0 +1,16 @@
+[IDIOMA]
+Campos e valores de "tipo" sempre em português sem acento. Conteúdo extraído do livro preserva o idioma original.
+
+[ESTRUTURA RAIZ]
+{
+  "tipo_pagina": "<tipo desta página>",
+  "pagina": <número impresso no livro> | "[sem página]",
+  "conteudo": [ ...blocos em ordem de leitura... ]
+}
+
+[REGRAS GERAIS]
+- Retorne apenas JSON válido, sem markdown.
+- Números de página impressos no livro vão só no campo raiz "pagina".
+- Tipos de bloco permitidos: titulo_1..titulo_5, paragrafo, lista, tabela, quadro, boxe_complementar, ficha_catalografica, imagem, nota, nota_rodape, glossario, glossario_inline, atividade, fonte, link, sumario, item, subitem.
+- Imagens: use tipo "imagem" com id fig1, fig2…; não descreva o visual (descricao = "[imagem presente]").
+- Use \n para quebras de linha dentro de strings JSON.

@@ -233,6 +233,7 @@ async def run(ctx: dict) -> dict:
     concurrency = max(1, int(ctx.get("linearize_page_concurrency") or 4))
 
     pages = ctx.get("pages", [])
+    total_pages = len(pages)
     figures_by_page = ctx.get("figures_by_page", {})
     figure_keys_by_page = ctx.get("figure_keys_by_page", {})
     pages_done: dict[int, dict[str, Any]] = await asyncio.to_thread(
@@ -267,6 +268,8 @@ async def run(ctx: dict) -> dict:
                     page["page_png"],
                     figure_keys,
                     prompt_version,
+                    page_number=page_number,
+                    total_pages=total_pages,
                 )
                 page_structure = combined["page_structure"]
                 page_contexts = combined.get("figure_contexts", {})
@@ -275,6 +278,8 @@ async def run(ctx: dict) -> dict:
                     openai.linearize_page,
                     page["page_png"],
                     prompt_version,
+                    page_number=page_number,
+                    total_pages=total_pages,
                 )
                 page_contexts = {}
 

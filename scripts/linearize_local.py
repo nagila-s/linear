@@ -74,7 +74,12 @@ def linearize_pdf(
         print(f"Linearizando {len(pending)} pagina(s) de {len(pages)} (concorrencia={concurrency})...")
 
         def _linearize(page):
-            content = openai.linearize_page(page.page_png, prompt_version)
+            content = openai.linearize_page(
+                page.page_png,
+                prompt_version,
+                page_number=page.page_number,
+                total_pages=len(pages),
+            )
             return {"page_number": page.page_number, "content": content}
 
         with ThreadPoolExecutor(max_workers=concurrency) as pool:

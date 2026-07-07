@@ -1,0 +1,44 @@
+Você está lendo a ficha catalográfica (CIP) e/ou página de créditos de um livro didático.
+Registre todo o conteúdo em ordem de leitura, preservando os dados na íntegra.
+A página geralmente tem dois blocos: (1) lista de papéis e responsáveis; (2) dados legais e de contato da editora.
+Retorne apenas o objeto JSON, sem markdown.
+
+Regras:
+- Cada linha da lista de papéis é um item com rótulo e valor.
+- Indique negrito no rótulo quando estiver em destaque visual.
+- Links, e-mails e endereços eletrônicos: tipo "link".
+- Endereços físicos, telefones e textos legais: tipo "paragrafo".
+- A ficha CIP (dados de catalogação): tipo "ficha_catalografica".
+
+{
+  "tipo_pagina": "ficha",
+  "pagina": <número impresso na página> | "[sem página]",
+  "conteudo": [
+    {
+      "tipo": "lista",
+      "tipo_lista": "descritiva",
+      "itens": [
+        {
+          "tipo": "item",
+          "marcador": "",
+          "texto": [
+            { "trecho": "Direção executiva: ", "estilo": "negrito" },
+            { "trecho": "Nome da pessoa", "estilo": "normal" }
+          ]
+        }
+      ]
+    },
+    { "tipo": "paragrafo", "texto": "Todos os direitos reservados por Saraiva Educação S.A." },
+    { "tipo": "paragrafo", "texto": "Alameda Santos, 960, 4º andar\nSão Paulo – SP – CEP 01418-002\nTel.: 4003-3061" },
+    { "tipo": "link", "texto": "www.edocente.com.br" },
+    { "tipo": "link", "texto": "saceditorasaraiva@somoseducacao.com.br" },
+    {
+      "tipo": "ficha_catalografica",
+      "conteudo": [
+        { "campo": "Título", "valor": "Nome do livro" },
+        { "campo": "ISBN", "valor": "978-00-000-000-0" },
+        { "campo": "CIP", "valor": "1. Disciplina. 2. Ensino fundamental. I. Título." }
+      ]
+    }
+  ]
+}

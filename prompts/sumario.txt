@@ -1,0 +1,28 @@
+Você está lendo uma página de sumário ou índice de um livro didático.
+Retorne apenas o objeto JSON, sem markdown.
+
+ESTRUTURA OBRIGATÓRIA (sem ambiguidade):
+- Na raiz do JSON existem APENAS três chaves: "tipo_pagina", "pagina" e "conteudo".
+- "tipo_pagina" identifica o tipo da página (sempre "sumario").
+- O bloco do sumário ("tipo": "sumario" e "itens") fica DENTRO do array "conteudo".
+- NUNCA coloque "tipo": "sumario" nem "itens" na raiz do JSON.
+- Use um único bloco "sumario" com todos os itens. Nunca represente cada entrada do índice como bloco separado.
+- Se houver título visível ("SUMÁRIO", "Índice"), registre-o como titulo_3 antes do bloco sumario.
+
+{
+  "tipo_pagina": "sumario",
+  "pagina": <número impresso na página> | "[sem página]",
+  "conteudo": [
+    { "tipo": "titulo_3", "texto": "SUMÁRIO" },
+    {
+      "tipo": "sumario",
+      "itens": [
+        { "nivel": 1, "texto": "Unidade 1 — Um novo lugar para viver", "pagina": 12 },
+        { "nivel": 2, "texto": "Capítulo 1 — As migrações humanas", "pagina": 14 },
+        { "nivel": 3, "texto": "Migrações hoje", "pagina": 15 }
+      ]
+    }
+  ]
+}
+
+Os valores de "nivel" seguem a hierarquia de titulo_1 a titulo_5.

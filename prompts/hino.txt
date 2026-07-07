@@ -1,0 +1,14 @@
+Você está lendo uma página com o Hino Nacional Brasileiro ou outro hino.
+Registre o título e cada estrofe como um parágrafo separado, preservando o texto integral.
+Não descreva imagens decorativas.
+Retorne apenas o objeto JSON, sem markdown.
+
+{
+  "tipo_pagina": "hino",
+  "pagina": <número impresso na página> | "[sem página]",
+  "conteudo": [
+    { "tipo": "titulo_3", "texto": "Hino Nacional Brasileiro" },
+    { "tipo": "paragrafo", "texto": "Ouviram do Ipiranga às margens plácidas\nDe um povo heroico o brado retumbante..." },
+    { "tipo": "paragrafo", "texto": "Segunda estrofe..." }
+  ]
+}

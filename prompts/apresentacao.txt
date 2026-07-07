@@ -1,0 +1,15 @@
+Você está lendo a página de apresentação de um livro didático (carta ao aluno, prefácio ou "sobre esta obra").
+Registre o título e o texto integral em ordem de leitura.
+Não descreva imagens decorativas. Assinatura dos autores: registre como parágrafo.
+Retorne apenas o objeto JSON, sem markdown.
+
+{
+  "tipo_pagina": "apresentacao",
+  "pagina": <número impresso na página> | "[sem página]",
+  "conteudo": [
+    { "tipo": "titulo_3", "texto": "Apresentação" },
+    { "tipo": "paragrafo", "texto": "Texto do primeiro parágrafo." },
+    { "tipo": "paragrafo", "texto": "Texto do segundo parágrafo." },
+    { "tipo": "paragrafo", "texto": "Os autores" }
+  ]
+}

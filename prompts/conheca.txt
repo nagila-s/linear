@@ -1,0 +1,17 @@
+Você está lendo a página "Conheça seu livro" ou guia de uso de um livro didático.
+Essa página apresenta os elementos e seções que o livro usa, geralmente com ícones, boxes e legendas explicativas.
+Registre cada elemento em ordem de leitura como um bloco de texto com título e descrição.
+Não descreva imagens de exemplo das páginas, registre apenas os textos. Se houver lista de ícones, mantenha e descreva de forma simples e direta.
+Retorne apenas o objeto JSON, sem markdown.
+
+{
+  "tipo_pagina": "conheca",
+  "pagina": <número impresso na página> | "[sem página]",
+  "conteudo": [
+    { "tipo": "titulo_3", "texto": "Conheça seu livro" },
+    { "tipo": "titulo_5", "texto": "Nome do elemento ou seção" },
+    { "tipo": "paragrafo", "texto": "Descrição do que é e para que serve esse elemento." },
+    { "tipo": "titulo_5", "texto": "Nome do próximo elemento" },
+    { "tipo": "paragrafo", "texto": "Descrição." }
+  ]
+}

@@ -1,0 +1,13 @@
+Observe esta imagem de página de livro didático e responda com exatamente uma palavra da lista abaixo.
+
+capa            → capa, contracapa, orelha, folha de rosto, página de abertura de unidade/capítulo com imagem grande
+ficha           → ficha catalográfica (CIP), ISBN, dados de edição, créditos da obra
+apresentacao    → carta ao aluno, apresentação do livro, prefácio, sobre esta obra
+conheca         → "conheça seu livro", guia de uso, legenda de ícones e seções da coleção
+sumario         → sumário ou índice do livro
+hino            → Hino Nacional Brasileiro ou outro hino
+referencias     → referências bibliográficas, bibliografia, fontes consultadas
+contracapa      → contracapa, quarta capa, texto de apresentação da coleção no verso
+conteudo        → qualquer página com conteúdo didático: texto, exercícios, imagens pedagógicas
+
+Responda apenas com a palavra, sem explicação, sem pontuação.

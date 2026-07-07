@@ -1,0 +1,23 @@
+Você está lendo a capa ou folha de rosto de um livro didático. Retorne um JSON com as informações na ordem exata abaixo, omitindo apenas os campos que realmente não existirem na página.
+Não descreva elementos visuais, cores ou imagens decorativas.
+Retorne apenas o objeto JSON, sem markdown.
+
+Registre cada linha de texto visível como um parágrafo separado, na ordem em que aparece na página, de cima para baixo. Não tente identificar hierarquias, títulos ou funções — cada linha é um parágrafo.
+
+ESTRUTURA RAIZ (sempre estas três chaves na raiz):
+- "tipo_pagina": tipo da página (sempre "capa")
+- "pagina": número impresso na página ou "[sem página]"
+- "conteudo": array com os blocos da página
+
+{
+  "tipo_pagina": "capa",
+  "pagina": <número impresso na página> | "[sem página]",
+  "conteudo": [
+    { "tipo": "titulo_1", "texto": "<nome da coleção>" },
+    { "tipo": "titulo_2", "texto": "<disciplina>" },
+    { "tipo": "titulo_3", "texto": "<ano escolar ou segmento, ex: 6.º ano>" },
+    { "tipo": "titulo_3", "texto": "<faixa ou volume, se houver>" },
+    { "tipo": "paragrafo", "texto": "<nome(s) do(s) autor(es)>" },
+    { "tipo": "paragrafo", "texto": "<nome da editora>" }
+  ]
+}

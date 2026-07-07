@@ -39,8 +39,14 @@ class PipelineOrchestrator:
 
         self.jobs_repo.update_stage(job_id, "linearize")
         linearized_pages: List[Dict[str, Any]] = []
+        total_pages = len(pages)
         for page in pages:
-            page_content = self.openai.linearize_page(page.page_png, prompt_version)
+            page_content = self.openai.linearize_page(
+                page.page_png,
+                prompt_version,
+                page_number=page.page_number,
+                total_pages=total_pages,
+            )
             linearized_pages.append(
                 {
                     "page_number": page.page_number,

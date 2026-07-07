@@ -1,39 +1,41 @@
 {
-  "family": "linear-worker",
+  "family": "linear-api",
   "networkMode": "awsvpc",
   "requiresCompatibilities": ["FARGATE"],
-  "cpu": "1024",
+  "cpu": "512",
   "memory": "2048",
   "executionRoleArn": "arn:aws:iam::089200327380:role/ecsTaskExecutionRole",
   "taskRoleArn": "arn:aws:iam::089200327380:role/ecsTaskExecutionRole",
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
   "containerDefinitions": [
     {
-      "name": "linear-worker",
-      "image": "089200327380.dkr.ecr.us-east-2.amazonaws.com/linear-worker:latest",
+      "name": "linear-api",
+      "image": "089200327380.dkr.ecr.us-east-2.amazonaws.com/linear-api:latest",
       "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "hostPort": 8000,
+          "protocol": "tcp",
+          "name": "linear-api-8000-tcp",
+          "appProtocol": "http"
+        }
+      ],
       "environment": [
         { "name": "APP_ENV", "value": "production" },
+        { "name": "APP_PORT", "value": "8000" },
+        { "name": "API_PREFIX", "value": "/api/v1" },
         { "name": "PDF_STORAGE_STRATEGY", "value": "supabase" },
-        { "name": "WORKER_POLL_SECONDS", "value": "5" },
-        { "name": "WORKER_MAX_ATTEMPTS", "value": "3" },
         { "name": "BUCKET_PDF", "value": "pdf" },
         { "name": "BUCKET_PAGES", "value": "pages" },
         { "name": "BUCKET_FIGURES", "value": "figures" },
         { "name": "BUCKET_JSON", "value": "json" },
-        { "name": "DORINA_API_KEY_HEADER", "value": "Authorization" },
-        { "name": "DORINA_BRAILLE", "value": "true" },
         { "name": "OPENAI_MODEL_LINEARIZATION", "value": "gpt-5.2" },
         { "name": "OPENAI_MODEL_CONTEXT", "value": "gpt-5.2" },
         { "name": "PDF_RENDER_DPI", "value": "120" },
-        { "name": "LINEARIZATION_PROMPT_FILE", "value": "prompt.txt" },
-        { "name": "LINEAR_PIPELINE_ONLY", "value": "true" },
-        { "name": "LINEARIZE_PAGE_CONCURRENCY", "value": "4" },
-        { "name": "PROMPT_ROUTING_ENABLED", "value": "true" },
-        { "name": "PROMPTS_DIRECTORY", "value": "prompts" },
-        { "name": "OPENAI_MODEL_CLASSIFIER", "value": "gpt-4.1-mini" },
-        { "name": "CLASSIFICATION_WINDOW_START", "value": "20" },
-        { "name": "CLASSIFICATION_WINDOW_END", "value": "15" },
-        { "name": "SPECIALIZED_PROMPTS_FILE", "value": "prompts_especializados.txt" },
         { "name": "LINEAR_PROMPT_VERSION", "value": "v2" }
       ],
       "secrets": [
@@ -41,16 +43,14 @@
         { "name": "SUPABASE_SERVICE_ROLE_KEY", "valueFrom": "arn:aws:ssm:us-east-2:089200327380:parameter/linear/SUPABASE_SERVICE_ROLE_KEY" },
         { "name": "SUPABASE_DB_DSN", "valueFrom": "arn:aws:ssm:us-east-2:089200327380:parameter/linear/SUPABASE_DB_DSN" },
         { "name": "OPENAI_API_KEY", "valueFrom": "arn:aws:ssm:us-east-2:089200327380:parameter/linear/OPENAI_API_KEY" },
-        { "name": "DORINA_API_URL", "valueFrom": "arn:aws:ssm:us-east-2:089200327380:parameter/linear/DORINA_API_URL" },
-        { "name": "DORINA_API_KEY", "valueFrom": "arn:aws:ssm:us-east-2:089200327380:parameter/linear/DORINA_API_KEY" }
+        { "name": "CORS_ORIGINS", "valueFrom": "arn:aws:ssm:us-east-2:089200327380:parameter/linear/CORS_ORIGINS" }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
-          "awslogs-group": "/ecs/linear-worker",
-          "awslogs-create-group": "true",
+          "awslogs-group": "/ecs/linear-api",
           "awslogs-region": "us-east-2",
-          "awslogs-stream-prefix": "worker"
+          "awslogs-stream-prefix": "api"
         }
       }
     }

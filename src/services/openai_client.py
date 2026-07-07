@@ -1,7 +1,8 @@
 import base64
 import json
+import logging
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 from openai import APIError, BadRequestError, NotFoundError, OpenAI
@@ -9,6 +10,16 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.core.config import get_settings
 from src.core.errors import IntegrationError
+from src.services.prompt_router import PromptRouter
+
+logger = logging.getLogger(__name__)
+
+_COMBINED_FIGURE_SUFFIX = (
+    "\n\nRetorne JSON com as chaves page_structure e figure_contexts. "
+    "page_structure deve seguir a estrutura deste prompt. "
+    "figure_contexts deve ser uma lista de objetos com figure_key e context. "
+    "Considere apenas estas figuras: {figure_keys}"
+)
 
 
 class OpenAIService:
@@ -19,12 +30,31 @@ class OpenAIService:
         self.settings = settings
         self.client = OpenAI(api_key=settings.openai_api_key)
         self.linearization_prompt = self._load_linearization_prompt()
+        self.prompt_router = PromptRouter(
+            settings.prompts_directory,
+            window_start=settings.classification_window_start,
+            window_end=settings.classification_window_end,
+            legacy_base_prompt=self.linearization_prompt,
+            specialized_prompts_file=settings.specialized_prompts_file,
+        )
 
     @retry(wait=wait_exponential(multiplier=1, min=1, max=10), stop=stop_after_attempt(3), reraise=True)
-    def linearize_page(self, page_png: bytes, prompt_version: str) -> Dict[str, Any]:
-        content = self._ask_vision(page_png, self.linearization_prompt, self.settings.openai_model_linearization)
+    def linearize_page(
+        self,
+        page_png: bytes,
+        prompt_version: str,
+        *,
+        page_number: Optional[int] = None,
+        total_pages: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        prompt, page_type = self._resolve_linearization(page_png, page_number, total_pages)
+        content = self._ask_vision(
+            page_png,
+            prompt,
+            self.settings.openai_model_linearization,
+        )
         data = self._extract_json(content)
-        data["prompt_version"] = prompt_version
+        self._apply_page_metadata(data, page_type, prompt_version)
         return data
 
     @retry(wait=wait_exponential(multiplier=1, min=1, max=10), stop=stop_after_attempt(3), reraise=True)
@@ -36,7 +66,7 @@ class OpenAIService:
     ) -> Dict[str, str]:
         prompt = (
             "Para cada figura desta pagina, gere contexto textual util para descricao acessivel. "
-            f"Retorne JSON no formato {{\"figures\": [{{\"figure_key\": \"...\", \"context\": \"...\"}}]}}. "
+            f'Retorne JSON no formato {{"figures": [{{"figure_key": "...", "context": "..."}}]}}. '
             f"Considere apenas estas figuras: {figure_keys}"
         )
         content = self._ask_vision(page_png, prompt, self.settings.openai_model_context)
@@ -57,27 +87,39 @@ class OpenAIService:
         page_png: bytes,
         figure_keys: List[str],
         prompt_version: str,
+        *,
+        page_number: Optional[int] = None,
+        total_pages: Optional[int] = None,
     ) -> Dict[str, Any]:
-        prompt = (
-            "Retorne JSON com page_structure e figure_contexts. "
-            "page_structure deve conter a linearizacao da pagina. "
-            "figure_contexts deve ser uma lista de objetos com figure_key e context. "
-            f"Use apenas estas figuras: {figure_keys}"
-        )
         if not self.settings.openai_combined_mode:
             return {
-                "page_structure": self.linearize_page(page_png, prompt_version),
+                "page_structure": self.linearize_page(
+                    page_png,
+                    prompt_version,
+                    page_number=page_number,
+                    total_pages=total_pages,
+                ),
                 "figure_contexts": self.extract_context(page_png, figure_keys, prompt_version),
             }
 
-        content = self._ask_vision(page_png, prompt, self.settings.openai_model_linearization)
+        prompt, page_type = self._resolve_linearization(page_png, page_number, total_pages)
+        combined_prompt = prompt + _COMBINED_FIGURE_SUFFIX.format(figure_keys=figure_keys)
+        content = self._ask_vision(
+            page_png,
+            combined_prompt,
+            self.settings.openai_model_linearization,
+        )
         data = self._extract_json(content)
         page_structure = data.get("page_structure")
         contexts_raw = data.get("figure_contexts", [])
         if not isinstance(page_structure, dict) or not isinstance(contexts_raw, list):
-            # Fallback automatico para chamadas separadas se a saida vier ruim/invalida.
             return {
-                "page_structure": self.linearize_page(page_png, prompt_version),
+                "page_structure": self.linearize_page(
+                    page_png,
+                    prompt_version,
+                    page_number=page_number,
+                    total_pages=total_pages,
+                ),
                 "figure_contexts": self.extract_context(page_png, figure_keys, prompt_version),
             }
 
@@ -90,22 +132,77 @@ class OpenAIService:
                 contexts[key] = str(item.get("context", ""))
         for key in figure_keys:
             contexts.setdefault(key, "")
-        page_structure["prompt_version"] = prompt_version
+        self._apply_page_metadata(page_structure, page_type, prompt_version)
         return {"page_structure": page_structure, "figure_contexts": contexts}
 
-    def _ask_vision(self, png_bytes: bytes, prompt: str, model: str) -> str:
+    def _resolve_linearization(
+        self,
+        page_png: bytes,
+        page_number: Optional[int],
+        total_pages: Optional[int],
+    ) -> Tuple[str, str]:
+        if (
+            not self.settings.prompt_routing_enabled
+            or page_number is None
+            or total_pages is None
+            or total_pages <= 0
+        ):
+            return self.linearization_prompt, "conteudo"
+
+        if not self.prompt_router.should_classify(page_number, total_pages):
+            page_type = "conteudo"
+        else:
+            classified = self._classify_page_type(page_png)
+            page_type = self.prompt_router.resolve_page_type(page_number, total_pages, classified)
+            logger.info(
+                "page=%s/%s classified=%s routed=%s",
+                page_number,
+                total_pages,
+                classified,
+                page_type,
+            )
+
+        return self.prompt_router.get_prompt(page_type), page_type
+
+    def _classify_page_type(self, page_png: bytes) -> str:
+        content = self._ask_vision(
+            page_png,
+            self.prompt_router.classifier_prompt,
+            self.settings.openai_model_classifier,
+            max_output_tokens=self.settings.classifier_max_output_tokens,
+        )
+        return self.prompt_router.normalize_page_type(content)
+
+    @staticmethod
+    def _apply_page_metadata(data: Dict[str, Any], page_type: str, prompt_version: str) -> None:
+        data.setdefault("tipo_pagina", page_type)
+        data["prompt_version"] = prompt_version
+
+    def _ask_vision(
+        self,
+        png_bytes: bytes,
+        prompt: str,
+        model: str,
+        *,
+        max_output_tokens: Optional[int] = None,
+    ) -> str:
         image_b64 = base64.b64encode(png_bytes).decode("utf-8")
         if self.settings.openai_prefer_responses_api:
-            content = self._ask_vision_with_responses(image_b64, prompt, model)
+            content = self._ask_vision_with_responses(
+                image_b64,
+                prompt,
+                model,
+                max_output_tokens=max_output_tokens,
+            )
             if not content:
                 raise IntegrationError("OpenAI retornou resposta vazia.")
             return content
 
         try:
-            response = self.client.chat.completions.create(
-                model=model,
-                temperature=0.1,
-                messages=[
+            kwargs: Dict[str, Any] = {
+                "model": model,
+                "temperature": 0.1,
+                "messages": [
                     {"role": "system", "content": "Voce responde em JSON valido, sem markdown."},
                     {
                         "role": "user",
@@ -118,26 +215,41 @@ class OpenAIService:
                         ],
                     },
                 ],
-            )
+            }
+            if max_output_tokens is not None:
+                kwargs["max_tokens"] = max_output_tokens
+            response = self.client.chat.completions.create(**kwargs)
             content = response.choices[0].message.content
         except (BadRequestError, NotFoundError, APIError) as exc:
             message = str(exc)
             if "not a chat model" not in message:
                 raise
-            content = self._ask_vision_with_responses(image_b64, prompt, model)
+            content = self._ask_vision_with_responses(
+                image_b64,
+                prompt,
+                model,
+                max_output_tokens=max_output_tokens,
+            )
 
         if not content:
             raise IntegrationError("OpenAI retornou resposta vazia.")
         return content
 
-    def _ask_vision_with_responses(self, image_b64: str, prompt: str, model: str) -> str:
+    def _ask_vision_with_responses(
+        self,
+        image_b64: str,
+        prompt: str,
+        model: str,
+        *,
+        max_output_tokens: Optional[int] = None,
+    ) -> str:
         responses = getattr(self.client, "responses", None)
         create = getattr(responses, "create", None) if responses is not None else None
         if callable(create):
             try:
-                response = create(
-                    model=model,
-                    input=[
+                kwargs: Dict[str, Any] = {
+                    "model": model,
+                    "input": [
                         {
                             "role": "system",
                             "content": [{"type": "input_text", "text": "Voce responde em JSON valido, sem markdown."}],
@@ -150,7 +262,10 @@ class OpenAIService:
                             ],
                         },
                     ],
-                )
+                }
+                if max_output_tokens is not None:
+                    kwargs["max_output_tokens"] = max_output_tokens
+                response = create(**kwargs)
                 output_text = getattr(response, "output_text", None)
                 if output_text:
                     return str(output_text).strip()
@@ -170,9 +285,21 @@ class OpenAIService:
             except AttributeError:
                 pass
 
-        return self._ask_vision_with_responses_http(image_b64, prompt, model)
+        return self._ask_vision_with_responses_http(
+            image_b64,
+            prompt,
+            model,
+            max_output_tokens=max_output_tokens,
+        )
 
-    def _ask_vision_with_responses_http(self, image_b64: str, prompt: str, model: str) -> str:
+    def _ask_vision_with_responses_http(
+        self,
+        image_b64: str,
+        prompt: str,
+        model: str,
+        *,
+        max_output_tokens: Optional[int] = None,
+    ) -> str:
         """Chama POST /v1/responses quando o SDK OpenAI instalado nao expoe client.responses."""
         url = "https://api.openai.com/v1/responses"
         headers = {
@@ -195,6 +322,8 @@ class OpenAIService:
                 },
             ],
         }
+        if max_output_tokens is not None:
+            payload["max_output_tokens"] = max_output_tokens
         timeout = httpx.Timeout(600.0, connect=30.0)
         with httpx.Client(timeout=timeout) as client:
             response = client.post(url, headers=headers, json=payload)
