@@ -31,6 +31,15 @@ function apiPrefix(): string {
   return (process.env.NEXT_PUBLIC_API_PREFIX ?? "/api/v1").replace(/\/+$/, "");
 }
 
+function isPayloadTooLargeMessage(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("413") ||
+    normalized.includes("payload too large") ||
+    normalized.includes("maximum allowed size")
+  );
+}
+
 async function readApiJson(response: Response): Promise<{
   id?: string;
   detail?: string | { msg?: string }[];
@@ -195,7 +204,19 @@ export async function startPdfJob(
   isbn?: string,
 ): Promise<{ jobId: string; message?: string }> {
   if (shouldUsePresignedUploadInBrowser()) {
-    return uploadPdfViaPresigned(file, isbn);
+    try {
+      return await uploadPdfViaPresigned(file, isbn);
+    } catch (error) {
+      // Fallback: em alguns ambientes o limite do Storage assinado e menor que o suportado pela API.
+      if (
+        usesDirectUpload() &&
+        error instanceof Error &&
+        isPayloadTooLargeMessage(error.message)
+      ) {
+        return uploadPdfToApi(file, isbn);
+      }
+      throw error;
+    }
   }
 
   if (usesDirectUpload()) {
