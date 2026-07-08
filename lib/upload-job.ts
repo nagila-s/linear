@@ -214,9 +214,11 @@ export async function startPdfJob(
     try {
       return await uploadPdfViaPresigned(file, isbn);
     } catch (error) {
-      // Fallback: em alguns ambientes o limite do Storage assinado e menor que o suportado pela API.
+      // Fallback so se a API publica for HTTPS (site HTTPS bloqueia fetch HTTP por mixed content).
+      const apiBase = getPublicApiBase();
       if (
         usesDirectUpload() &&
+        apiBase?.startsWith("https://") &&
         error instanceof Error &&
         isPayloadTooLargeMessage(error.message)
       ) {
