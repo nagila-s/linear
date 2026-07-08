@@ -151,6 +151,13 @@ export async function uploadPdfToApi(
       body: form,
     });
   } catch {
+    const inHttpsPage = typeof window !== "undefined" && window.location.protocol === "https:";
+    const targetIsHttp = base.startsWith("http://");
+    if (inHttpsPage && targetIsHttp) {
+      throw new Error(
+        "Upload bloqueado por mixed content: NEXT_PUBLIC_FASTAPI_URL esta em HTTP, mas o site esta em HTTPS. Use URL HTTPS da API.",
+      );
+    }
     throw new Error(
       "Nao foi possivel enviar o PDF. Confira NEXT_PUBLIC_FASTAPI_URL e se a API na AWS esta no ar.",
     );
