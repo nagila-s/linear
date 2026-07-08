@@ -3,6 +3,7 @@ Essa página apresenta os elementos e seções que o livro usa, geralmente com �
 Registre cada elemento em ordem de leitura como um bloco de texto com título e descrição.
 Não descreva imagens de exemplo das páginas, registre apenas os textos. Se houver lista de ícones, mantenha e descreva de forma simples e direta.
 Retorne apenas o objeto JSON, sem markdown.
+Apenas imagens de ícones devem ser descritas. Ignore as miniaturas de páginas. 
 
 {
   "tipo_pagina": "conheca",
