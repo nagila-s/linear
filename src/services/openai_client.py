@@ -10,6 +10,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from src.core.config import get_settings
 from src.core.errors import IntegrationError
 from src.services.prompt_router import PromptRouter
+from src.utils.json_codec import parse_llm_json
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +49,9 @@ class OpenAIService:
             page_png,
             prompt,
             self.settings.openai_model_linearization,
+            json_mode=True,
         )
-        data = self._extract_json(content)
+        data = self._extract_json(content, page_number=page_number)
         self._apply_page_metadata(data, page_type, prompt_version)
         return data
 
@@ -65,7 +67,7 @@ class OpenAIService:
             f'Retorne JSON no formato {{"figures": [{{"figure_key": "...", "context": "..."}}]}}. '
             f"Considere apenas estas figuras: {figure_keys}"
         )
-        content = self._ask_vision(page_png, prompt, self.settings.openai_model_context)
+        content = self._ask_vision(page_png, prompt, self.settings.openai_model_context, json_mode=True)
         data = self._extract_json(content)
         figures = data.get("figures", [])
         output: Dict[str, str] = {}
@@ -104,8 +106,9 @@ class OpenAIService:
             page_png,
             combined_prompt,
             self.settings.openai_model_linearization,
+            json_mode=True,
         )
-        data = self._extract_json(content)
+        data = self._extract_json(content, page_number=page_number)
         page_structure = data.get("page_structure")
         contexts_raw = data.get("figure_contexts", [])
         if not isinstance(page_structure, dict) or not isinstance(contexts_raw, list):
@@ -181,6 +184,7 @@ class OpenAIService:
         model: str,
         *,
         max_output_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         image_b64 = base64.b64encode(png_bytes).decode("utf-8")
         if self.settings.openai_prefer_responses_api:
@@ -189,6 +193,7 @@ class OpenAIService:
                 prompt,
                 model,
                 max_output_tokens=max_output_tokens,
+                json_mode=json_mode,
             )
             if not content:
                 raise IntegrationError("OpenAI retornou resposta vazia.")
@@ -214,6 +219,8 @@ class OpenAIService:
             }
             if max_output_tokens is not None:
                 kwargs["max_tokens"] = max_output_tokens
+            if json_mode:
+                kwargs["response_format"] = {"type": "json_object"}
             response = self.client.chat.completions.create(**kwargs)
             content = response.choices[0].message.content
         except (BadRequestError, NotFoundError, APIError) as exc:
@@ -225,6 +232,7 @@ class OpenAIService:
                 prompt,
                 model,
                 max_output_tokens=max_output_tokens,
+                json_mode=json_mode,
             )
 
         if not content:
@@ -238,6 +246,7 @@ class OpenAIService:
         model: str,
         *,
         max_output_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         responses = getattr(self.client, "responses", None)
         create = getattr(responses, "create", None) if responses is not None else None
@@ -261,6 +270,8 @@ class OpenAIService:
                 }
                 if max_output_tokens is not None:
                     kwargs["max_output_tokens"] = max_output_tokens
+                if json_mode:
+                    kwargs["text"] = {"format": {"type": "json_object"}}
                 response = create(**kwargs)
                 output_text = getattr(response, "output_text", None)
                 if output_text:
@@ -286,6 +297,7 @@ class OpenAIService:
             prompt,
             model,
             max_output_tokens=max_output_tokens,
+            json_mode=json_mode,
         )
 
     def _ask_vision_with_responses_http(
@@ -295,6 +307,7 @@ class OpenAIService:
         model: str,
         *,
         max_output_tokens: Optional[int] = None,
+        json_mode: bool = False,
     ) -> str:
         """Chama POST /v1/responses quando o SDK OpenAI instalado nao expoe client.responses."""
         url = "https://api.openai.com/v1/responses"
@@ -320,6 +333,8 @@ class OpenAIService:
         }
         if max_output_tokens is not None:
             payload["max_output_tokens"] = max_output_tokens
+        if json_mode:
+            payload["text"] = {"format": {"type": "json_object"}}
         timeout = httpx.Timeout(600.0, connect=30.0)
         with httpx.Client(timeout=timeout) as client:
             response = client.post(url, headers=headers, json=payload)
@@ -358,15 +373,23 @@ class OpenAIService:
         return "\n".join(parts).strip()
 
     @staticmethod
-    def _extract_json(content: str) -> Dict[str, Any]:
-        cleaned = content.strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned.replace("```json", "").replace("```", "").strip()
+    def _extract_json(
+        content: str,
+        *,
+        page_number: Optional[int] = None,
+    ) -> Dict[str, Any]:
         try:
-            return json.loads(cleaned)
-        except json.JSONDecodeError:
-            start = cleaned.find("{")
-            end = cleaned.rfind("}")
-            if start >= 0 and end > start:
-                return json.loads(cleaned[start : end + 1])
-            raise IntegrationError("Nao foi possivel extrair JSON valido da resposta OpenAI.")
+            return parse_llm_json(content)
+        except json.JSONDecodeError as exc:
+            page_hint = f" (pagina {page_number})" if page_number is not None else ""
+            preview = content.strip().replace("\n", " ")[:240]
+            logger.warning(
+                "Falha ao parsear JSON da OpenAI%s: %s | preview=%r",
+                page_hint,
+                exc,
+                preview,
+            )
+            raise IntegrationError(
+                f"A IA retornou JSON invalido na linearizacao{page_hint}. "
+                "Reprocesse o job; se persistir, revise o prompt da pagina."
+            ) from exc
