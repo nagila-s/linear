@@ -219,11 +219,11 @@ def _build_dorina_context(
     return "\n\n".join(parts)
 
 
-def _supports_figure_description(content: Any) -> bool:
+def _supports_figure_description(content: Any, *, page_number: int, total_pages: int, router: PromptRouter) -> bool:
     if not isinstance(content, dict):
-        return True
+        return False
     page_type = str(content.get("tipo_pagina") or PromptRouter.CONTENT_PAGE_TYPE).strip().lower()
-    return PromptRouter.supports_figure_description(page_type)
+    return not router.should_skip_figure_pipeline(page_number, total_pages, page_type)
 
 
 async def run(ctx: dict) -> dict:
@@ -239,6 +239,7 @@ async def run(ctx: dict) -> dict:
     job_id = ctx["job_id"]
     process_version = ctx["process_version"]
     concurrency = max(1, int(ctx.get("linearize_page_concurrency") or 4))
+    prompt_router = openai.prompt_router
 
     pages = ctx.get("pages", [])
     total_pages = len(pages)
@@ -276,7 +277,15 @@ async def run(ctx: dict) -> dict:
                 page_number=page_number,
                 total_pages=total_pages,
             )
-            describe_figures = PromptRouter.supports_figure_description(page_type) and bool(figure_keys)
+            describe_figures = (
+                PromptRouter.supports_figure_description(page_type)
+                and not openai.prompt_router.should_skip_figure_pipeline(
+                    page_number,
+                    total_pages,
+                    page_type,
+                )
+                and bool(figure_keys)
+            )
             if describe_figures:
                 combined = await asyncio.to_thread(
                     openai.linearize_and_extract_context,
@@ -339,7 +348,12 @@ async def run(ctx: dict) -> dict:
             return
 
         page_structure = linear_entry["content"]
-        if not _supports_figure_description(page_structure):
+        if not _supports_figure_description(
+            page_structure,
+            page_number=page_number,
+            total_pages=total_pages,
+            router=prompt_router,
+        ):
             return
 
         refs, captions = _extract_image_refs_and_captions(page_structure)

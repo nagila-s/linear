@@ -49,15 +49,39 @@ class OpenAIService:
             prompt, page_type = self._resolve_linearization(page_png, page_number, total_pages)
         else:
             prompt = self.prompt_router.get_prompt(page_type)
-        content = self._ask_vision(
-            page_png,
-            prompt,
-            self.settings.openai_model_linearization,
-            json_mode=True,
+
+        retry_suffix = (
+            "\n\nRetorne SOMENTE JSON valido e completo. "
+            'Use "texto" como string simples sempre que possivel. '
+            'Escape aspas internas com \\". '
+            "Nao trunque o JSON."
         )
-        data = self._extract_json(content, page_number=page_number)
-        self._apply_page_metadata(data, page_type, prompt_version)
-        return data
+        last_error: IntegrationError | None = None
+        for attempt, extra in enumerate((prompt, prompt + retry_suffix)):
+            content = self._ask_vision(
+                page_png,
+                extra,
+                self.settings.openai_model_linearization,
+                json_mode=True,
+                max_output_tokens=self.settings.linearize_max_output_tokens,
+            )
+            try:
+                data = self._extract_json(content, page_number=page_number)
+            except IntegrationError as exc:
+                last_error = exc
+                if attempt == 0:
+                    logger.warning(
+                        "JSON invalido na pagina %s; tentando novamente com prompt reforcado.",
+                        page_number,
+                    )
+                    continue
+                raise
+            self._apply_page_metadata(data, page_type, prompt_version)
+            return data
+
+        if last_error is not None:
+            raise last_error
+        raise IntegrationError("Falha ao linearizar pagina.")
 
     @retry(wait=wait_exponential(multiplier=1, min=1, max=10), stop=stop_after_attempt(3), reraise=True)
     def extract_context(
@@ -111,6 +135,17 @@ class OpenAIService:
                 total_pages=total_pages,
             )
         if not self.prompt_router.supports_figure_description(page_type):
+            return {
+                "page_structure": self.linearize_page(
+                    page_png,
+                    prompt_version,
+                    page_number=page_number,
+                    total_pages=total_pages,
+                    page_type=page_type,
+                ),
+                "figure_contexts": {},
+            }
+        if self.prompt_router.should_skip_figure_pipeline(page_number or 0, total_pages or 0, page_type):
             return {
                 "page_structure": self.linearize_page(
                     page_png,

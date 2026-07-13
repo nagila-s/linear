@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     openai_combined_mode: bool = False
     openai_prefer_responses_api: bool = True
     classifier_max_output_tokens: int = 16
+    linearize_max_output_tokens: int = 16384
     prompt_routing_enabled: bool = True
     prompts_directory: str = "prompts"
     classification_window_start: int = 20
