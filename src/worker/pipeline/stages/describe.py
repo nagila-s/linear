@@ -3,6 +3,7 @@ import re
 from typing import Any
 
 from src.core.config import get_settings
+from src.services.prompt_router import PromptRouter
 from src.worker.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -218,6 +219,13 @@ def _build_dorina_context(
     return "\n\n".join(parts)
 
 
+def _supports_figure_description(content: Any) -> bool:
+    if not isinstance(content, dict):
+        return True
+    page_type = str(content.get("tipo_pagina") or PromptRouter.CONTENT_PAGE_TYPE).strip().lower()
+    return PromptRouter.supports_figure_description(page_type)
+
+
 async def run(ctx: dict) -> dict:
     openai = ctx["openai"]
     dorina = ctx["dorina"]
@@ -262,7 +270,14 @@ async def run(ctx: dict) -> dict:
         page_number = int(page["page_number"])
         figure_keys = figure_keys_by_page.get(page_number, [])
         async with sem:
-            if figure_keys:
+            page_type = await asyncio.to_thread(
+                openai.resolve_page_type,
+                page["page_png"],
+                page_number=page_number,
+                total_pages=total_pages,
+            )
+            describe_figures = PromptRouter.supports_figure_description(page_type) and bool(figure_keys)
+            if describe_figures:
                 combined = await asyncio.to_thread(
                     openai.linearize_and_extract_context,
                     page["page_png"],
@@ -270,6 +285,7 @@ async def run(ctx: dict) -> dict:
                     prompt_version,
                     page_number=page_number,
                     total_pages=total_pages,
+                    page_type=page_type,
                 )
                 page_structure = combined["page_structure"]
                 page_contexts = combined.get("figure_contexts", {})
@@ -280,6 +296,7 @@ async def run(ctx: dict) -> dict:
                     prompt_version,
                     page_number=page_number,
                     total_pages=total_pages,
+                    page_type=page_type,
                 )
                 page_contexts = {}
 
@@ -322,6 +339,9 @@ async def run(ctx: dict) -> dict:
             return
 
         page_structure = linear_entry["content"]
+        if not _supports_figure_description(page_structure):
+            return
+
         refs, captions = _extract_image_refs_and_captions(page_structure)
         if not refs:
             return

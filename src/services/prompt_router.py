@@ -18,6 +18,8 @@ PAGE_TYPES = frozenset(
     }
 )
 
+CONTENT_PAGE_TYPE = "conteudo"
+
 # Um arquivo por tipo, todos em PROMPTS_DIRECTORY.
 PROMPT_FILES: Dict[str, str] = {
     "capa": "capa.txt",
@@ -60,7 +62,11 @@ class PromptRouter:
         cleaned = cleaned.strip(".,;:!?\"'")
         if cleaned in PAGE_TYPES:
             return cleaned
-        return "conteudo"
+        return CONTENT_PAGE_TYPE
+
+    @staticmethod
+    def supports_figure_description(page_type: str) -> bool:
+        return (page_type or "").strip().lower() == CONTENT_PAGE_TYPE
 
     def resolve_page_type(
         self,

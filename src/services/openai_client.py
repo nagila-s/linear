@@ -43,8 +43,12 @@ class OpenAIService:
         *,
         page_number: Optional[int] = None,
         total_pages: Optional[int] = None,
+        page_type: Optional[str] = None,
     ) -> Dict[str, Any]:
-        prompt, page_type = self._resolve_linearization(page_png, page_number, total_pages)
+        if page_type is None:
+            prompt, page_type = self._resolve_linearization(page_png, page_number, total_pages)
+        else:
+            prompt = self.prompt_router.get_prompt(page_type)
         content = self._ask_vision(
             page_png,
             prompt,
@@ -80,6 +84,16 @@ class OpenAIService:
             output.setdefault(key, "")
         return output
 
+    def resolve_page_type(
+        self,
+        page_png: bytes,
+        *,
+        page_number: Optional[int] = None,
+        total_pages: Optional[int] = None,
+    ) -> str:
+        _, page_type = self._resolve_linearization(page_png, page_number, total_pages)
+        return page_type
+
     def linearize_and_extract_context(
         self,
         page_png: bytes,
@@ -88,7 +102,26 @@ class OpenAIService:
         *,
         page_number: Optional[int] = None,
         total_pages: Optional[int] = None,
+        page_type: Optional[str] = None,
     ) -> Dict[str, Any]:
+        if page_type is None:
+            page_type = self.resolve_page_type(
+                page_png,
+                page_number=page_number,
+                total_pages=total_pages,
+            )
+        if not self.prompt_router.supports_figure_description(page_type):
+            return {
+                "page_structure": self.linearize_page(
+                    page_png,
+                    prompt_version,
+                    page_number=page_number,
+                    total_pages=total_pages,
+                    page_type=page_type,
+                ),
+                "figure_contexts": {},
+            }
+
         if not self.settings.openai_combined_mode:
             return {
                 "page_structure": self.linearize_page(
@@ -96,11 +129,12 @@ class OpenAIService:
                     prompt_version,
                     page_number=page_number,
                     total_pages=total_pages,
+                    page_type=page_type,
                 ),
                 "figure_contexts": self.extract_context(page_png, figure_keys, prompt_version),
             }
 
-        prompt, page_type = self._resolve_linearization(page_png, page_number, total_pages)
+        prompt = self.prompt_router.get_prompt(page_type)
         combined_prompt = prompt + _COMBINED_FIGURE_SUFFIX.format(figure_keys=figure_keys)
         content = self._ask_vision(
             page_png,
@@ -118,6 +152,7 @@ class OpenAIService:
                     prompt_version,
                     page_number=page_number,
                     total_pages=total_pages,
+                    page_type=page_type,
                 ),
                 "figure_contexts": self.extract_context(page_png, figure_keys, prompt_version),
             }
