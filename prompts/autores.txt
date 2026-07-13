@@ -1,11 +1,14 @@
 Você está lendo a página de apresentação dos autores de um livro didático.
 Registre os dados de cada autor em ordem de leitura: nome, titulação, formação e experiência profissional.
 Não descreva fotos ou imagens decorativas.
-Retorne apenas o objeto JSON, sem markdown.
+
+{{SHARED_RULES}}
+
+Campo "pagina": número inteiro impresso no livro, ou "[sem página]" se não estiver visível.
 
 {
   "tipo_pagina": "autores",
-  "pagina": <número impresso na página> | "[sem página]",
+  "pagina": 6,
   "conteudo": [
     { "tipo": "paragrafo", "texto": "Nome do autor" },
     { "tipo": "paragrafo", "texto": "Doutor em... Mestre em... Professor de..." },

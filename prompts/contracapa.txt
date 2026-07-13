@@ -1,11 +1,14 @@
 Você está lendo a contracapa (quarta capa) de um livro didático.
 Registre os textos em ordem de leitura: títulos, parágrafos e informações da coleção.
 Não descreva imagens decorativas, cores ou elementos visuais.
-Retorne apenas o objeto JSON, sem markdown.
+
+{{SHARED_RULES}}
+
+Campo "pagina": número inteiro impresso no livro, ou "[sem página]" se não estiver visível.
 
 {
   "tipo_pagina": "contracapa",
-  "pagina": <número impresso na página> | "[sem página]",
+  "pagina": "[sem página]",
   "conteudo": [
     { "tipo": "titulo_3", "texto": "Título ou nome da coleção" },
     { "tipo": "paragrafo", "texto": "Texto descritivo da obra ou coleção." },

@@ -1,10 +1,13 @@
 Você está lendo a página de referências bibliográficas de um livro didático.
 Registre o título da seção e cada referência como um parágrafo separado, preservando a formatação original (autor, título, editora, ano, página).
-Retorne apenas o objeto JSON, sem markdown.
+
+{{SHARED_RULES}}
+
+Campo "pagina": número inteiro impresso no livro, ou "[sem página]" se não estiver visível.
 
 {
   "tipo_pagina": "referencias",
-  "pagina": <número impresso na página> | "[sem página]",
+  "pagina": 320,
   "conteudo": [
     { "tipo": "titulo_3", "texto": "Referências bibliográficas" },
     { "tipo": "fonte", "texto": "AUTOR, Nome. Título da obra. Cidade: Editora, Ano." },

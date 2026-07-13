@@ -18,9 +18,11 @@ Errado:    { "type": "paragraph", "text": "Hello, my name is Sam." }
 
 Retorne sempre um objeto JSON com esta estrutura raiz:
 
+Campo "pagina": número inteiro impresso no livro, ou "[sem página]" se não estiver visível.
+
 {
   "tipo_pagina": "conteudo",
-  "pagina": <número inteiro impresso no livro> | "[sem página]",
+  "pagina": 42,
   "conteudo": [ ...blocos em ordem de leitura... ]
 }
 
@@ -373,7 +375,7 @@ O bloco "sumario" fica dentro de "conteudo" — nunca coloque "tipo": "sumario" 
 
 {
   "tipo_pagina": "sumario",
-  "pagina": <número inteiro impresso no livro> | "[sem página]",
+  "pagina": 3,
   "conteudo": [
     { "tipo": "titulo_3", "texto": "SUMÁRIO" },
     {

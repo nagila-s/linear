@@ -1,7 +1,6 @@
 Você está lendo a ficha catalográfica (CIP) e/ou página de créditos de um livro didático.
 Registre todo o conteúdo em ordem de leitura, preservando os dados na íntegra.
 A página geralmente tem dois blocos: (1) lista de papéis e responsáveis; (2) dados legais e de contato da editora.
-Retorne apenas o objeto JSON, sem markdown.
 
 Regras:
 - Cada linha da lista de papéis é um item com rótulo e valor.
@@ -10,9 +9,13 @@ Regras:
 - Endereços físicos, telefones e textos legais: tipo "paragrafo".
 - A ficha CIP (dados de catalogação): tipo "ficha_catalografica".
 
+{{SHARED_RULES}}
+
+Campo "pagina": número inteiro impresso no livro, ou "[sem página]" se não estiver visível.
+
 {
   "tipo_pagina": "ficha",
-  "pagina": <número impresso na página> | "[sem página]",
+  "pagina": 2,
   "conteudo": [
     {
       "tipo": "lista",

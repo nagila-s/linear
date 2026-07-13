@@ -2,9 +2,12 @@
 Campos e valores de "tipo" sempre em português sem acento. Conteúdo extraído do livro preserva o idioma original.
 
 [ESTRUTURA RAIZ]
+Campo "pagina": número inteiro impresso no livro, ou "[sem página]" se não estiver visível.
+
+Exemplo (JSON válido):
 {
   "tipo_pagina": "<tipo desta página>",
-  "pagina": <número impresso no livro> | "[sem página]",
+  "pagina": 4,
   "conteudo": [ ...blocos em ordem de leitura... ]
 }
 

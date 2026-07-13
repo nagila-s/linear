@@ -1,5 +1,4 @@
 Você está lendo uma página de sumário ou índice de um livro didático.
-Retorne apenas o objeto JSON, sem markdown.
 
 ESTRUTURA OBRIGATÓRIA (sem ambiguidade):
 - Na raiz do JSON existem APENAS três chaves: "tipo_pagina", "pagina" e "conteudo".
@@ -9,9 +8,13 @@ ESTRUTURA OBRIGATÓRIA (sem ambiguidade):
 - Use um único bloco "sumario" com todos os itens. Nunca represente cada entrada do índice como bloco separado.
 - Se houver título visível ("SUMÁRIO", "Índice"), registre-o como titulo_3 antes do bloco sumario.
 
+{{SHARED_RULES}}
+
+Campo "pagina": número inteiro impresso no livro, ou "[sem página]" se não estiver visível.
+
 {
   "tipo_pagina": "sumario",
-  "pagina": <número impresso na página> | "[sem página]",
+  "pagina": 3,
   "conteudo": [
     { "tipo": "titulo_3", "texto": "SUMÁRIO" },
     {

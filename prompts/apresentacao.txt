@@ -1,11 +1,14 @@
 Você está lendo a página de apresentação de um livro didático (carta ao aluno, prefácio ou "sobre esta obra").
 Registre o título e o texto integral em ordem de leitura.
 Não descreva imagens decorativas. Assinatura dos autores: registre como parágrafo.
-Retorne apenas o objeto JSON, sem markdown.
+
+{{SHARED_RULES}}
+
+Campo "pagina": número inteiro impresso no livro, ou "[sem página]" se não estiver visível.
 
 {
   "tipo_pagina": "apresentacao",
-  "pagina": <número impresso na página> | "[sem página]",
+  "pagina": 5,
   "conteudo": [
     { "tipo": "titulo_3", "texto": "Apresentação" },
     { "tipo": "paragrafo", "texto": "Texto do primeiro parágrafo." },
