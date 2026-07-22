@@ -265,6 +265,12 @@ async def run(ctx: dict) -> dict:
         job_id,
         prompt_version,
     )
+    # Paginas com falha no checkpoint devem ser reprocessadas no retry do job.
+    for page_number, item in list(pages_done.items()):
+        content = item.get("content") if isinstance(item, dict) else None
+        has_error = isinstance(content, dict) and str(content.get("error") or "").strip()
+        if str(item.get("status") or "") == "failed" or has_error:
+            pages_done.pop(page_number, None)
     descriptions_done: dict[str, dict[str, Any]] = await asyncio.to_thread(
         _load_descriptions_checkpoint,
         storage,

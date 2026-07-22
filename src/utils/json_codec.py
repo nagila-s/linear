@@ -6,6 +6,7 @@ from typing import Any
 _UNICODE_ESCAPE_RE = re.compile(r"\\u[0-9a-fA-F]{4}|\\U[0-9a-fA-F]{8}")
 _TRAILING_COMMA_RE = re.compile(r",(\s*[}\]])")
 _FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE | re.MULTILINE)
+_TRAILING_COMMA_EOF_RE = re.compile(r",\s*$")
 
 
 def normalize_unicode_in_json(value: Any) -> Any:
@@ -37,13 +38,51 @@ def repair_llm_json_text(text: str) -> str:
     return cleaned
 
 
+def close_truncated_json(text: str) -> str:
+    """Fecha strings/objetos/arrays abertos em JSON truncado (best-effort)."""
+    cleaned = repair_llm_json_text(text)
+    start = cleaned.find("{")
+    if start < 0:
+        return cleaned
+    s = cleaned[start:]
+
+    in_string = False
+    escape = False
+    stack: list[str] = []
+    for ch in s:
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            stack.append("}")
+        elif ch == "[":
+            stack.append("]")
+        elif ch in "}]":
+            if stack and stack[-1] == ch:
+                stack.pop()
+
+    if in_string:
+        s += '"'
+    s = _TRAILING_COMMA_EOF_RE.sub("", s)
+    while stack:
+        s += stack.pop()
+    return s
+
+
 def parse_llm_json(content: str) -> dict[str, Any]:
-    """Extrai e faz parse de JSON retornado por LLM, com reparo leve."""
+    """Extrai e faz parse de JSON retornado por LLM, com reparo leve e anti-truncamento."""
     if not content or not str(content).strip():
         raise json.JSONDecodeError("Resposta vazia.", content or "", 0)
 
-    candidates: list[str] = []
     cleaned = repair_llm_json_text(content)
+    candidates: list[str] = []
     if cleaned:
         candidates.append(cleaned)
     start = cleaned.find("{")
@@ -52,11 +91,14 @@ def parse_llm_json(content: str) -> dict[str, Any]:
         sliced = cleaned[start : end + 1]
         if sliced not in candidates:
             candidates.append(sliced)
+    closed = close_truncated_json(cleaned)
+    if closed and closed not in candidates:
+        candidates.append(closed)
 
     decoder = json.JSONDecoder()
     last_error: json.JSONDecodeError | None = None
     for candidate in candidates:
-        for payload in (candidate, repair_llm_json_text(candidate)):
+        for payload in (candidate, repair_llm_json_text(candidate), close_truncated_json(candidate)):
             stripped = payload.lstrip()
             if not stripped:
                 continue

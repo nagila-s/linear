@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 from openai import APIError, BadRequestError, NotFoundError, OpenAI
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wait_exponential
 
 from src.core.config import get_settings
 from src.core.errors import IntegrationError
@@ -19,6 +19,19 @@ _COMBINED_FIGURE_SUFFIX = (
     "page_structure deve seguir a estrutura deste prompt. "
     "figure_contexts deve ser uma lista de objetos com figure_key e context. "
     "Considere apenas estas figuras: {figure_keys}"
+)
+
+_JSON_RETRY_SUFFIX = (
+    "\n\nRetorne SOMENTE JSON valido e completo. "
+    'Use "texto" como string simples sempre que possivel. '
+    'Escape aspas internas com \\". '
+    "Nao trunque o JSON."
+)
+
+_JSON_COMPACT_SUFFIX = (
+    "\n\nA pagina e densa. Priorize JSON COMPLETO e VALIDO sobre detalhe tipografico. "
+    'Use sempre "texto" como string simples (nunca array de estilos). '
+    "Omita campos null. Nao use markdown. Nao corte o JSON no meio."
 )
 
 
@@ -42,7 +55,12 @@ class OpenAIService:
             return False
         return bool(self.settings.prompt_routing_enabled)
 
-    @retry(wait=wait_exponential(multiplier=1, min=1, max=10), stop=stop_after_attempt(3), reraise=True)
+    @retry(
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        stop=stop_after_attempt(3),
+        retry=retry_if_not_exception_type(IntegrationError),
+        reraise=True,
+    )
     def linearize_page(
         self,
         page_png: bytes,
@@ -57,40 +75,59 @@ class OpenAIService:
         else:
             prompt = self.prompt_router.get_prompt(page_type)
 
-        retry_suffix = (
-            "\n\nRetorne SOMENTE JSON valido e completo. "
-            'Use "texto" como string simples sempre que possivel. '
-            'Escape aspas internas com \\". '
-            "Nao trunque o JSON."
+        attempt_prompts = (
+            prompt,
+            prompt + _JSON_RETRY_SUFFIX,
+            prompt + _JSON_COMPACT_SUFFIX,
         )
         last_error: IntegrationError | None = None
-        for attempt, extra in enumerate((prompt, prompt + retry_suffix)):
-            content = self._ask_vision(
-                page_png,
-                extra,
-                self.settings.openai_model_linearization,
-                json_mode=True,
-                max_output_tokens=self.settings.linearize_max_output_tokens,
-            )
+        for attempt, extra in enumerate(attempt_prompts):
+            try:
+                content = self._ask_vision(
+                    page_png,
+                    extra,
+                    self.settings.openai_model_linearization,
+                    json_mode=True,
+                    max_output_tokens=self.settings.linearize_max_output_tokens,
+                )
+            except IntegrationError as exc:
+                last_error = exc
+                logger.warning(
+                    "Falha na chamada OpenAI pagina=%s attempt=%s: %s",
+                    page_number,
+                    attempt + 1,
+                    exc,
+                )
+                continue
             try:
                 data = self._extract_json(content, page_number=page_number)
             except IntegrationError as exc:
                 last_error = exc
-                if attempt == 0:
-                    logger.warning(
-                        "JSON invalido na pagina %s; tentando novamente com prompt reforcado.",
-                        page_number,
-                    )
-                    continue
-                raise
+                logger.warning(
+                    "JSON invalido na pagina %s (attempt=%s); retry com prompt reforcado/compacto.",
+                    page_number,
+                    attempt + 1,
+                )
+                continue
             self._apply_page_metadata(data, page_type, prompt_version)
+            if attempt > 0:
+                logger.info(
+                    "pagina=%s linearizada apos retry attempt=%s",
+                    page_number,
+                    attempt + 1,
+                )
             return data
 
         if last_error is not None:
             raise last_error
         raise IntegrationError("Falha ao linearizar pagina.")
 
-    @retry(wait=wait_exponential(multiplier=1, min=1, max=10), stop=stop_after_attempt(3), reraise=True)
+    @retry(
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        stop=stop_after_attempt(3),
+        retry=retry_if_not_exception_type(IntegrationError),
+        reraise=True,
+    )
     def extract_context(
         self,
         page_png: bytes,
