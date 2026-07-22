@@ -57,7 +57,15 @@ class DorinaService:
             if response.status_code >= 500:
                 raise IntegrationError(f"Dorina upstream_5xx_error ({response.status_code}): {response.text[:500]}")
             raise IntegrationError(f"Dorina upstream_4xx_error ({response.status_code}): {response.text[:500]}")
-        data = response.json()
+        raw = (response.text or "").strip()
+        if not raw:
+            raise IntegrationError("Dorina respondeu com corpo vazio.")
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise IntegrationError(
+                f"Dorina respondeu JSON invalido: {raw[:300]}"
+            ) from exc
         if not isinstance(data, dict):
             raise IntegrationError(f"Dorina resposta invalida: {str(data)[:300]}")
         if data.get("error"):

@@ -439,7 +439,15 @@ class OpenAIService:
         with httpx.Client(timeout=timeout) as client:
             response = client.post(url, headers=headers, json=payload)
             response.raise_for_status()
-            data = response.json()
+            raw = (response.text or "").strip()
+            if not raw:
+                raise IntegrationError("OpenAI responses API (HTTP) retornou corpo vazio.")
+            try:
+                data = response.json()
+            except ValueError as exc:
+                raise IntegrationError(
+                    f"OpenAI responses API (HTTP) retornou JSON invalido: {raw[:300]}"
+                ) from exc
         status = str(data.get("status") or "").lower()
         text = self._parse_responses_api_json(data)
         if text:
