@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     worker_poll_seconds: int = 5
     worker_max_attempts: int = 3
     worker_stale_job_minutes: int = 120
-    linear_pipeline_only: bool = True
+    linear_pipeline_only: bool = False
     pdf_render_dpi: int = 150
     # Quantas páginas rasterizar por vez (limita pico de RAM em livros inteiros)
     pdf_render_batch_size: int = 10

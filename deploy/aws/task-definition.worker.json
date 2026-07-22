@@ -28,7 +28,7 @@
         { "name": "LINEARIZE_MAX_OUTPUT_TOKENS", "value": "0" },
         { "name": "PDF_RENDER_DPI", "value": "120" },
         { "name": "PDF_RENDER_BATCH_SIZE", "value": "10" },
-        { "name": "LINEAR_PIPELINE_ONLY", "value": "true" },
+        { "name": "LINEAR_PIPELINE_ONLY", "value": "false" },
         { "name": "LINEARIZE_PAGE_CONCURRENCY", "value": "4" },
         { "name": "PROMPT_ROUTING_ENABLED", "value": "true" },
         { "name": "PROMPTS_DIRECTORY", "value": "prompts" },
