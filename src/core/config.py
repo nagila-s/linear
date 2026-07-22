@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     # Quantas páginas rasterizar por vez (limita pico de RAM em livros inteiros)
     pdf_render_batch_size: int = 10
     linearize_page_concurrency: int = 4
+    # Concorrencia da Dorina (paginas em paralelo). Alto demais → Connection reset / HTTP2 terminated.
+    dorina_page_concurrency: int = 3
     # auto = Supabase; em 413 (limite do plano/bucket) grava em disco local compartilhado com o worker
     pdf_storage_strategy: str = "auto"
     pdf_local_cache_dir: str = "data/pdf_cache"

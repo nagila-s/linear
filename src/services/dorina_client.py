@@ -15,7 +15,11 @@ class DorinaService:
         if not self.settings.dorina_api_key:
             raise IntegrationError("DORINA_API_KEY nao configurado.")
 
-    @retry(wait=wait_exponential(multiplier=1, min=1, max=10), stop=stop_after_attempt(3), reraise=True)
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        stop=stop_after_attempt(5),
+        reraise=True,
+    )
     def describe_figure(
         self,
         image_url: str,
@@ -51,6 +55,8 @@ class DorinaService:
             )
         except requests.Timeout as exc:
             raise IntegrationError("Dorina timeout_transient_error") from exc
+        except (requests.ConnectionError, ConnectionResetError, OSError) as exc:
+            raise IntegrationError(f"Dorina connection_transient_error: {exc}") from exc
         except requests.RequestException as exc:
             raise IntegrationError("Dorina network_transient_error") from exc
         if response.status_code >= 400:

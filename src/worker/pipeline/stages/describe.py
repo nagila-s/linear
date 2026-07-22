@@ -284,6 +284,8 @@ async def run(ctx: dict) -> dict:
 
     sem = asyncio.Semaphore(concurrency)
     ck_lock = asyncio.Lock()
+    dorina_concurrency = max(1, int(getattr(settings, "dorina_page_concurrency", None) or 3))
+    dorina_sem = asyncio.Semaphore(dorina_concurrency)
 
     async def linearize_page_entry(page: dict) -> None:
         page_number = int(page["page_number"])
@@ -399,6 +401,10 @@ async def run(ctx: dict) -> dict:
             )
 
     async def describe_page_entry(page: dict) -> None:
+        async with dorina_sem:
+            await _describe_page_entry_unlocked(page)
+
+    async def _describe_page_entry_unlocked(page: dict) -> None:
         page_number = int(page["page_number"])
         linear_entry = pages_done.get(page_number)
         if not linear_entry:

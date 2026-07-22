@@ -30,6 +30,7 @@
         { "name": "PDF_RENDER_BATCH_SIZE", "value": "10" },
         { "name": "LINEAR_PIPELINE_ONLY", "value": "false" },
         { "name": "LINEARIZE_PAGE_CONCURRENCY", "value": "4" },
+        { "name": "DORINA_PAGE_CONCURRENCY", "value": "3" },
         { "name": "PROMPT_ROUTING_ENABLED", "value": "true" },
         { "name": "PROMPTS_DIRECTORY", "value": "prompts" },
         { "name": "OPENAI_MODEL_CLASSIFIER", "value": "gpt-4.1-mini" },
