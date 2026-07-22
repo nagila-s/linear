@@ -30,7 +30,8 @@ class Settings(BaseSettings):
     openai_combined_mode: bool = False
     openai_prefer_responses_api: bool = True
     # none | low | medium | high | xhigh — gpt-5.x na Responses API
-    openai_reasoning_effort: str = "medium"
+    # none = padrao barato; medium/high multiplica custo por pagina (reasoning tokens)
+    openai_reasoning_effort: str = "none"
     classifier_max_output_tokens: int = 16
     linearize_max_output_tokens: int = 65536
     prompt_routing_enabled: bool = True
