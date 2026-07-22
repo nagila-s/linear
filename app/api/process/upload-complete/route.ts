@@ -14,6 +14,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       object_path?: string;
       token?: string;
       filename?: string;
+      miolo_only?: boolean;
     };
 
     if (!body.isbn || !body.storage_path || !body.object_path || !body.token || !body.filename) {
@@ -31,6 +32,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         filename: body.filename,
         job_type: "linearizar",
         prompt_version: "v1",
+        miolo_only: Boolean(body.miolo_only),
       }),
     });
 

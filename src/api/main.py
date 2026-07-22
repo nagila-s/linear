@@ -58,6 +58,7 @@ def _create_linearize_job(
     filename: str,
     storage_path_pdf: str,
     prompt_version: str,
+    miolo_only: bool = False,
 ) -> JobResponse:
     process_version = _process_version()
     books_repo.upsert(
@@ -75,6 +76,7 @@ def _create_linearize_job(
             "filename": filename,
             "pipeline_mode": JobType.LINEARIZAR.value,
             "linearize_only": True,
+            "miolo_only": bool(miolo_only),
             "process_version": process_version,
             "openai_model": settings.openai_model_linearization,
             "pdf_render_dpi": settings.pdf_render_dpi,
@@ -179,6 +181,7 @@ def complete_presigned_upload(payload: UploadCompleteRequest) -> JobResponse:
             filename=payload.filename,
             storage_path_pdf=payload.storage_path,
             prompt_version=payload.prompt_version,
+            miolo_only=payload.miolo_only,
         )
     except AppError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -192,6 +195,7 @@ async def create_job_from_upload(
     isbn: str | None = Form(None),
     job_type: JobType = Form(JobType.LINEARIZAR),
     prompt_version: str = Form("v1"),
+    miolo_only: bool = Form(False),
     pdf_file: UploadFile = File(...),
 ) -> JobResponse:
     try:
@@ -213,6 +217,7 @@ async def create_job_from_upload(
             filename=pdf_file.filename or "original.pdf",
             storage_path_pdf=storage_path_pdf,
             prompt_version=prompt_version,
+            miolo_only=miolo_only,
         )
     except AppError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

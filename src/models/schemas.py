@@ -61,6 +61,7 @@ class UploadInitRequest(BaseModel):
     filename: str = Field(min_length=1, max_length=512)
     job_type: JobType = JobType.LINEARIZAR
     prompt_version: str = Field(default="v1")
+    miolo_only: bool = False
 
 
 class UploadInitResponse(BaseModel):
@@ -81,6 +82,7 @@ class UploadCompleteRequest(BaseModel):
     filename: str = Field(min_length=1, max_length=512)
     job_type: JobType = JobType.LINEARIZAR
     prompt_version: str = Field(default="v1")
+    miolo_only: bool = False
 
 
 class FigureContext(BaseModel):

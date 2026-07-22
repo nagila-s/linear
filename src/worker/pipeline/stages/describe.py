@@ -219,10 +219,21 @@ def _build_dorina_context(
     return "\n\n".join(parts)
 
 
-def _supports_figure_description(content: Any, *, page_number: int, total_pages: int, router: PromptRouter) -> bool:
+def _supports_figure_description(
+    content: Any,
+    *,
+    page_number: int,
+    total_pages: int,
+    router: PromptRouter,
+    miolo_only: bool = False,
+) -> bool:
     if not isinstance(content, dict):
         return False
     page_type = str(content.get("tipo_pagina") or PromptRouter.CONTENT_PAGE_TYPE).strip().lower()
+    if not PromptRouter.supports_figure_description(page_type):
+        return False
+    if miolo_only:
+        return True
     return not router.should_skip_figure_pipeline(page_number, total_pages, page_type)
 
 
@@ -240,6 +251,7 @@ async def run(ctx: dict) -> dict:
     process_version = ctx["process_version"]
     concurrency = max(1, int(ctx.get("linearize_page_concurrency") or 4))
     prompt_router = openai.prompt_router
+    miolo_only = bool(ctx.get("miolo_only") or getattr(openai, "miolo_only", False))
 
     pages = ctx.get("pages", [])
     total_pages = len(pages)
@@ -281,10 +293,13 @@ async def run(ctx: dict) -> dict:
                 describe_figures = (
                     not settings.linear_pipeline_only
                     and PromptRouter.supports_figure_description(page_type)
-                    and not openai.prompt_router.should_skip_figure_pipeline(
-                        page_number,
-                        total_pages,
-                        page_type,
+                    and (
+                        miolo_only
+                        or not openai.prompt_router.should_skip_figure_pipeline(
+                            page_number,
+                            total_pages,
+                            page_type,
+                        )
                     )
                     and bool(figure_keys)
                 )
@@ -389,6 +404,7 @@ async def run(ctx: dict) -> dict:
             page_number=page_number,
             total_pages=total_pages,
             router=prompt_router,
+            miolo_only=miolo_only,
         ):
             return
 

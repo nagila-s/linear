@@ -2,6 +2,10 @@
 
 const VERCEL_BFF_MAX_BYTES = 4.5 * 1024 * 1024;
 
+export type StartPdfJobOptions = {
+  mioloOnly?: boolean;
+};
+
 type UploadInitPayload = {
   signed_url: string;
   token: string;
@@ -64,11 +68,13 @@ async function readApiJson(response: Response): Promise<{
 export async function uploadPdfViaPresigned(
   file: File,
   isbn?: string,
+  options: StartPdfJobOptions = {},
 ): Promise<{ jobId: string; message?: string }> {
+  const mioloOnly = Boolean(options.mioloOnly);
   const initResponse = await fetch("/api/process/upload-init", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ isbn, filename: file.name }),
+    body: JSON.stringify({ isbn, filename: file.name, miolo_only: mioloOnly }),
   });
   const initPayload = (await initResponse.json()) as UploadInitPayload & { error?: string };
   if (!initResponse.ok) {
@@ -105,6 +111,7 @@ export async function uploadPdfViaPresigned(
       object_path: initPayload.object_path,
       token: initPayload.token,
       filename: file.name,
+      miolo_only: mioloOnly,
     }),
   });
   let completePayload: { jobId?: string; message?: string; error?: string };
@@ -132,6 +139,7 @@ export async function uploadPdfViaPresigned(
 export async function uploadPdfToApi(
   file: File,
   isbn?: string,
+  options: StartPdfJobOptions = {},
 ): Promise<{ jobId: string; message?: string }> {
   const base = getPublicApiBase();
   if (!base) {
@@ -143,6 +151,7 @@ export async function uploadPdfToApi(
   if (isbn) form.append("isbn", isbn);
   form.append("job_type", "linearizar");
   form.append("prompt_version", "v1");
+  form.append("miolo_only", options.mioloOnly ? "true" : "false");
 
   let response: Response;
   try {
@@ -185,12 +194,14 @@ export async function uploadPdfToApi(
 export async function uploadPdfViaBff(
   file: File,
   isbn?: string,
+  options: StartPdfJobOptions = {},
 ): Promise<{ jobId: string; message?: string }> {
   const formData = new FormData();
   formData.append("pdf", file);
   if (isbn) formData.append("isbn", isbn);
   formData.append("linearize", "true");
   formData.append("contextualize", "false");
+  formData.append("miolo_only", options.mioloOnly ? "true" : "false");
 
   const response = await fetch("/api/process", { method: "POST", body: formData });
   const payload = (await response.json()) as {
@@ -209,10 +220,11 @@ export async function uploadPdfViaBff(
 export async function startPdfJob(
   file: File,
   isbn?: string,
+  options: StartPdfJobOptions = {},
 ): Promise<{ jobId: string; message?: string }> {
   if (shouldUsePresignedUploadInBrowser()) {
     try {
-      return await uploadPdfViaPresigned(file, isbn);
+      return await uploadPdfViaPresigned(file, isbn, options);
     } catch (error) {
       // Fallback so se a API publica for HTTPS (site HTTPS bloqueia fetch HTTP por mixed content).
       const apiBase = getPublicApiBase();
@@ -222,14 +234,14 @@ export async function startPdfJob(
         error instanceof Error &&
         isPayloadTooLargeMessage(error.message)
       ) {
-        return uploadPdfToApi(file, isbn);
+        return uploadPdfToApi(file, isbn, options);
       }
       throw error;
     }
   }
 
   if (usesDirectUpload()) {
-    return uploadPdfToApi(file, isbn);
+    return uploadPdfToApi(file, isbn, options);
   }
 
   if (file.size > VERCEL_BFF_MAX_BYTES) {
@@ -238,5 +250,5 @@ export async function startPdfJob(
     );
   }
 
-  return uploadPdfViaBff(file, isbn);
+  return uploadPdfViaBff(file, isbn, options);
 }

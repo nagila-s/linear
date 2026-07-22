@@ -19,6 +19,7 @@ export default function HomePage() {
   const [file, setFile] = useState<File | null>(null);
   const [isbn, setIsbn] = useState("");
   const [linearize, setLinearize] = useState(true);
+  const [mioloOnly, setMioloOnly] = useState(false);
   const contextualize = false;
   const [lookup, setLookup] = useState<LookupState>({ loading: false, data: null });
   const [jobId, setJobId] = useState<string | null>(null);
@@ -153,6 +154,21 @@ export default function HomePage() {
               />
               <span>Linearizar e enviar para a Plataforma Braille</span>
             </label>
+            <label className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                checked={mioloOnly}
+                onChange={(event) => setMioloOnly(event.target.checked)}
+                disabled={!linearize}
+                className="mt-0.5 h-6 w-6 shrink-0 appearance-none border-2 border-black bg-white checked:bg-black focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-1 disabled:opacity-50"
+              />
+              <span className={!linearize ? "opacity-50" : undefined}>
+                Apenas miolo
+                <span className="mt-1 block text-sm font-normal text-zinc-600">
+                  Pula capa, ficha, sumário etc. e usa o prompt de conteúdo em todas as páginas.
+                </span>
+              </span>
+            </label>
             <label
               className="flex items-start gap-3 opacity-50"
               title="Ainda não disponível na API"
@@ -167,7 +183,6 @@ export default function HomePage() {
               <span>Extrair imagens e contexto e enviar para o Avalia (em breve)</span>
             </label>
           </div>
-
           <div className="mt-auto pt-8">
           <button
             type="button"
@@ -176,7 +191,7 @@ export default function HomePage() {
               if (!file) return;
               try {
                 const normalizedIsbn = isbn.trim() ? normalizeIsbn(isbn) : undefined;
-                const payload = await startPdfJob(file, normalizedIsbn);
+                const payload = await startPdfJob(file, normalizedIsbn, { mioloOnly });
                 setJobId(payload.jobId);
                 setProgressOpen(true);
                 setStatus({

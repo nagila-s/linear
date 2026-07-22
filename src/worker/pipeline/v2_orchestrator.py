@@ -77,11 +77,18 @@ async def run(job: dict, _queue) -> dict:
 
     artifacts_repo = ArtifactsRepository()
     storage = StorageService()
-    openai = OpenAIService()
+    job_metadata = job_data.get("metadata") or {}
+    if not isinstance(job_metadata, dict):
+        job_metadata = {}
+    miolo_only = bool(job_metadata.get("miolo_only"))
+    openai = OpenAIService(miolo_only=miolo_only)
     dorina = DorinaClient()
 
     job_id = UUID(str(job_data["id"]))
     jobs_repo = JobsRepository()
+
+    if miolo_only:
+        logger.info("job=%s miolo_only=true — classificador desligado, prompt base em todas as paginas", job_data["id"])
 
     ctx = {
         "job_id": str(job_data["id"]),
@@ -97,6 +104,7 @@ async def run(job: dict, _queue) -> dict:
         "dorina": dorina,
         "pdf_render_dpi": app_settings.pdf_render_dpi,
         "linearize_page_concurrency": app_settings.linearize_page_concurrency,
+        "miolo_only": miolo_only,
     }
 
     await asyncio.to_thread(jobs_repo.update_stage, job_id, "preprocess")

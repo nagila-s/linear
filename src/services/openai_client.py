@@ -23,17 +23,24 @@ _COMBINED_FIGURE_SUFFIX = (
 
 
 class OpenAIService:
-    def __init__(self) -> None:
+    def __init__(self, *, miolo_only: bool = False) -> None:
         settings = get_settings()
         if not settings.openai_api_key:
             raise IntegrationError("OPENAI_API_KEY nao configurado.")
         self.settings = settings
+        self.miolo_only = bool(miolo_only)
         self.client = OpenAI(api_key=settings.openai_api_key)
         self.prompt_router = PromptRouter(
             settings.prompts_directory,
             window_start=settings.classification_window_start,
             window_end=settings.classification_window_end,
         )
+
+    @property
+    def prompt_routing_enabled(self) -> bool:
+        if self.miolo_only:
+            return False
+        return bool(self.settings.prompt_routing_enabled)
 
     @retry(wait=wait_exponential(multiplier=1, min=1, max=10), stop=stop_after_attempt(3), reraise=True)
     def linearize_page(
@@ -211,7 +218,7 @@ class OpenAIService:
         total_pages: Optional[int],
     ) -> Tuple[str, str]:
         if (
-            not self.settings.prompt_routing_enabled
+            not self.prompt_routing_enabled
             or page_number is None
             or total_pages is None
             or total_pages <= 0

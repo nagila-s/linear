@@ -27,6 +27,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const isbnInput = String(incoming.get("isbn") ?? "").trim();
+    const mioloOnly = String(incoming.get("miolo_only") ?? "false") === "true";
 
     const backendForm = new FormData();
     backendForm.append("pdf_file", file);
@@ -35,6 +36,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
     backendForm.append("job_type", "linearizar");
     backendForm.append("prompt_version", "v1");
+    backendForm.append("miolo_only", mioloOnly ? "true" : "false");
 
     const response = await fetchFastApi("/jobs/upload", {
       method: "POST",
