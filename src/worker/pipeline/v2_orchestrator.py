@@ -5,7 +5,6 @@ from uuid import UUID
 from psycopg.rows import dict_row
 
 from src.core.config import get_settings
-from src.core.errors import IntegrationError
 from src.models.enums import JobType
 from src.repositories.artifacts import ArtifactsRepository
 from src.repositories.db import get_conn
@@ -107,11 +106,21 @@ async def run(job: dict, _queue) -> dict:
 
     described_count = int(ctx.get("described_count") or 0)
     failed_count = int(ctx.get("failed_count") or 0)
-    if failed_count > 0 and described_count == 0:
+    linearize_failed = int(ctx.get("linearize_failed_count") or 0)
+    if failed_count > 0 and described_count == 0 and not app_settings.linear_pipeline_only:
         sample_error = _sample_dorina_failure(ctx.get("descriptions", []))
-        raise IntegrationError(
-            "Dorina nao descreveu nenhuma figura "
-            f"({failed_count} falha(s)). {sample_error}"
+        logger.warning(
+            "job=%s Dorina falhou em todas as figuras (%s). "
+            "Seguindo com final.json mesmo assim. detalhe=%s",
+            ctx["job_id"],
+            failed_count,
+            sample_error,
+        )
+    if linearize_failed > 0:
+        logger.warning(
+            "job=%s %s pagina(s) com falha de linearizacao — final.json sera montado com as demais.",
+            ctx["job_id"],
+            linearize_failed,
         )
 
     await asyncio.to_thread(jobs_repo.update_stage, job_id, "assemble")

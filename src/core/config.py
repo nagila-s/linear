@@ -29,8 +29,10 @@ class Settings(BaseSettings):
     openai_model_classifier: str = "gpt-4.1-mini"
     openai_combined_mode: bool = False
     openai_prefer_responses_api: bool = True
+    # none | low | medium | high | xhigh — gpt-5.x na Responses API
+    openai_reasoning_effort: str = "medium"
     classifier_max_output_tokens: int = 16
-    linearize_max_output_tokens: int = 16384
+    linearize_max_output_tokens: int = 65536
     prompt_routing_enabled: bool = True
     prompts_directory: str = "prompts"
     classification_window_start: int = 20
@@ -58,6 +60,8 @@ class Settings(BaseSettings):
     worker_stale_job_minutes: int = 120
     linear_pipeline_only: bool = True
     pdf_render_dpi: int = 150
+    # Quantas páginas rasterizar por vez (limita pico de RAM em livros inteiros)
+    pdf_render_batch_size: int = 10
     linearize_page_concurrency: int = 4
     # auto = Supabase; em 413 (limite do plano/bucket) grava em disco local compartilhado com o worker
     pdf_storage_strategy: str = "auto"

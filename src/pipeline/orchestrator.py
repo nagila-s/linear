@@ -73,7 +73,13 @@ class PipelineOrchestrator:
 
     def _run_preprocess(self, book_id: str, isbn: str, pdf_storage_path: str):
         pdf_bytes = self.storage.download_by_storage_path(pdf_storage_path or f"pdf/{isbn}/original.pdf")
-        pages = preprocess_pdf(pdf_bytes, dpi=get_settings().pdf_render_dpi)
+        settings = get_settings()
+        pages = preprocess_pdf(
+            pdf_bytes,
+            dpi=settings.pdf_render_dpi,
+            batch_size=settings.pdf_render_batch_size,
+            keep_rgb=False,
+        )
         process_version = self.storage.settings.process_version_strategy.format(
             linear_prompt_version=self.storage.settings.linear_prompt_version,
         )
@@ -82,7 +88,18 @@ class PipelineOrchestrator:
             page_storage_path = self.storage.upload_page(
                 isbn, page.page_name, page.page_png, process_version=process_version
             )
-            width_px, height_px = page.source_rgb_image.size
-            self.artifacts_repo.add_page(book_id, page.page_number, page_storage_path, width_px, height_px)
+            self.artifacts_repo.add_page(
+                book_id,
+                page.page_number,
+                page_storage_path,
+                page.width_px,
+                page.height_px,
+            )
+            if page.source_rgb_image is not None:
+                try:
+                    page.source_rgb_image.close()
+                except Exception:
+                    pass
+                page.source_rgb_image = None
 
         return pages

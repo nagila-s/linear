@@ -270,44 +270,79 @@ async def run(ctx: dict) -> dict:
     async def linearize_page_entry(page: dict) -> None:
         page_number = int(page["page_number"])
         figure_keys = figure_keys_by_page.get(page_number, [])
-        async with sem:
-            page_type = await asyncio.to_thread(
-                openai.resolve_page_type,
-                page["page_png"],
-                page_number=page_number,
-                total_pages=total_pages,
-            )
-            describe_figures = (
-                PromptRouter.supports_figure_description(page_type)
-                and not openai.prompt_router.should_skip_figure_pipeline(
-                    page_number,
-                    total_pages,
-                    page_type,
-                )
-                and bool(figure_keys)
-            )
-            if describe_figures:
-                combined = await asyncio.to_thread(
-                    openai.linearize_and_extract_context,
+        try:
+            async with sem:
+                page_type = await asyncio.to_thread(
+                    openai.resolve_page_type,
                     page["page_png"],
-                    figure_keys,
-                    prompt_version,
                     page_number=page_number,
                     total_pages=total_pages,
-                    page_type=page_type,
                 )
-                page_structure = combined["page_structure"]
-                page_contexts = combined.get("figure_contexts", {})
-            else:
-                page_structure = await asyncio.to_thread(
-                    openai.linearize_page,
-                    page["page_png"],
+                describe_figures = (
+                    not settings.linear_pipeline_only
+                    and PromptRouter.supports_figure_description(page_type)
+                    and not openai.prompt_router.should_skip_figure_pipeline(
+                        page_number,
+                        total_pages,
+                        page_type,
+                    )
+                    and bool(figure_keys)
+                )
+                if describe_figures:
+                    combined = await asyncio.to_thread(
+                        openai.linearize_and_extract_context,
+                        page["page_png"],
+                        figure_keys,
+                        prompt_version,
+                        page_number=page_number,
+                        total_pages=total_pages,
+                        page_type=page_type,
+                    )
+                    page_structure = combined["page_structure"]
+                    page_contexts = combined.get("figure_contexts", {})
+                else:
+                    page_structure = await asyncio.to_thread(
+                        openai.linearize_page,
+                        page["page_png"],
+                        prompt_version,
+                        page_number=page_number,
+                        total_pages=total_pages,
+                        page_type=page_type,
+                    )
+                    page_contexts = {}
+        except Exception as exc:
+            logger.error(
+                "job=%s page=%s linearize_failed: %s",
+                job_id,
+                page_number,
+                exc,
+                exc_info=True,
+            )
+            page_structure = {
+                "tipo_pagina": "conteudo",
+                "pagina": "[sem página]",
+                "conteudo": [],
+                "error": str(exc)[:1000],
+            }
+            page_contexts = {}
+            linear_entry = {
+                "page_number": page_number,
+                "content": page_structure,
+                "status": "failed",
+                "error": str(exc)[:1000],
+            }
+            async with ck_lock:
+                pages_done[page_number] = linear_entry
+                await asyncio.to_thread(
+                    _save_linear_checkpoint,
+                    storage,
+                    isbn,
+                    process_version,
+                    job_id,
                     prompt_version,
-                    page_number=page_number,
-                    total_pages=total_pages,
-                    page_type=page_type,
+                    pages_done,
                 )
-                page_contexts = {}
+            return
 
         contexts_by_page[page_number] = page_contexts
         for key, context_text in page_contexts.items():
@@ -328,6 +363,7 @@ async def run(ctx: dict) -> dict:
         linear_entry = {
             "page_number": page_number,
             "content": page_structure,
+            "status": "ok",
         }
         async with ck_lock:
             pages_done[page_number] = linear_entry
@@ -498,7 +534,27 @@ async def run(ctx: dict) -> dict:
                 if legend:
                     contexts.setdefault(ref, legend)
 
-    await asyncio.gather(*[describe_page_entry(p) for p in pages])
+    ok_linearized = sum(
+        1
+        for item in pages_done.values()
+        if str(item.get("status") or "ok") != "failed"
+        and isinstance(item.get("content"), dict)
+        and not str((item.get("content") or {}).get("error") or "").strip()
+    )
+    failed_linearize = sum(1 for item in pages_done.values() if str(item.get("status") or "") == "failed")
+    if ok_linearized == 0 and pages:
+        raise RuntimeError(
+            f"Nenhuma pagina linearizada com sucesso "
+            f"({failed_linearize} falha(s) em {len(pages)} pagina(s))."
+        )
+
+    if settings.linear_pipeline_only:
+        logger.info(
+            "job=%s LINEAR_PIPELINE_ONLY=true — pulando Dorina (figuras nao descritas).",
+            job_id,
+        )
+    else:
+        await asyncio.gather(*[describe_page_entry(p) for p in pages])
 
     linearized_pages = [pages_done[n] for n in sorted(pages_done)]
     descriptions = sorted(
@@ -511,9 +567,10 @@ async def run(ctx: dict) -> dict:
     failed_count = sum(1 for item in descriptions if str(item.get("status")) == "failed")
 
     logger.info(
-        "job=%s linearized=%s described_ok=%s failed=%s",
+        "job=%s linearized=%s linearize_failed=%s described_ok=%s dorina_failed=%s",
         job_id,
-        len(linearized_pages),
+        ok_linearized,
+        failed_linearize,
         described_ok,
         failed_count,
     )
@@ -523,4 +580,5 @@ async def run(ctx: dict) -> dict:
     ctx["descriptions"] = descriptions
     ctx["described_count"] = described_ok
     ctx["failed_count"] = failed_count
+    ctx["linearize_failed_count"] = failed_linearize
     return ctx

@@ -264,6 +264,7 @@ class OpenAIService:
                 model,
                 max_output_tokens=max_output_tokens,
                 json_mode=json_mode,
+                use_reasoning=json_mode,
             )
             if not content:
                 raise IntegrationError("OpenAI retornou resposta vazia.")
@@ -303,11 +304,20 @@ class OpenAIService:
                 model,
                 max_output_tokens=max_output_tokens,
                 json_mode=json_mode,
+                use_reasoning=json_mode,
             )
 
         if not content:
             raise IntegrationError("OpenAI retornou resposta vazia.")
         return content
+
+    def _reasoning_kwargs(self, *, use_reasoning: bool) -> Dict[str, Any]:
+        if not use_reasoning:
+            return {}
+        effort = (self.settings.openai_reasoning_effort or "").strip().lower()
+        if not effort or effort == "none":
+            return {"reasoning": {"effort": "none"}}
+        return {"reasoning": {"effort": effort}}
 
     def _ask_vision_with_responses(
         self,
@@ -317,6 +327,7 @@ class OpenAIService:
         *,
         max_output_tokens: Optional[int] = None,
         json_mode: bool = False,
+        use_reasoning: bool = False,
     ) -> str:
         responses = getattr(self.client, "responses", None)
         create = getattr(responses, "create", None) if responses is not None else None
@@ -342,7 +353,19 @@ class OpenAIService:
                     kwargs["max_output_tokens"] = max_output_tokens
                 if json_mode:
                     kwargs["text"] = {"format": {"type": "json_object"}}
+                kwargs.update(self._reasoning_kwargs(use_reasoning=use_reasoning))
                 response = create(**kwargs)
+                status = str(getattr(response, "status", "") or "").lower()
+                if status == "incomplete":
+                    details = getattr(response, "incomplete_details", None)
+                    reason = getattr(details, "reason", None) if details is not None else None
+                    if isinstance(details, dict):
+                        reason = details.get("reason", reason)
+                    logger.warning(
+                        "OpenAI responses incomplete model=%s reason=%s",
+                        model,
+                        reason,
+                    )
                 output_text = getattr(response, "output_text", None)
                 if output_text:
                     return str(output_text).strip()
@@ -359,6 +382,10 @@ class OpenAIService:
                 merged = "\n".join(texts).strip()
                 if merged:
                     return merged
+                if status == "incomplete":
+                    raise IntegrationError(
+                        f"OpenAI retornou resposta incompleta (reason={reason or 'unknown'})."
+                    )
             except AttributeError:
                 pass
 
@@ -368,6 +395,7 @@ class OpenAIService:
             model,
             max_output_tokens=max_output_tokens,
             json_mode=json_mode,
+            use_reasoning=use_reasoning,
         )
 
     def _ask_vision_with_responses_http(
@@ -378,6 +406,7 @@ class OpenAIService:
         *,
         max_output_tokens: Optional[int] = None,
         json_mode: bool = False,
+        use_reasoning: bool = False,
     ) -> str:
         """Chama POST /v1/responses quando o SDK OpenAI instalado nao expoe client.responses."""
         url = "https://api.openai.com/v1/responses"
@@ -405,15 +434,23 @@ class OpenAIService:
             payload["max_output_tokens"] = max_output_tokens
         if json_mode:
             payload["text"] = {"format": {"type": "json_object"}}
+        payload.update(self._reasoning_kwargs(use_reasoning=use_reasoning))
         timeout = httpx.Timeout(600.0, connect=30.0)
         with httpx.Client(timeout=timeout) as client:
             response = client.post(url, headers=headers, json=payload)
             response.raise_for_status()
             data = response.json()
+        status = str(data.get("status") or "").lower()
         text = self._parse_responses_api_json(data)
-        if not text:
-            raise IntegrationError("OpenAI responses API (HTTP) retornou saida vazia ou nao reconhecida.")
-        return text
+        if text:
+            return text
+        if status == "incomplete":
+            details = data.get("incomplete_details") or {}
+            reason = details.get("reason") if isinstance(details, dict) else None
+            raise IntegrationError(
+                f"OpenAI responses API incompleta (reason={reason or 'unknown'})."
+            )
+        raise IntegrationError("OpenAI responses API (HTTP) retornou saida vazia ou nao reconhecida.")
 
     @staticmethod
     def _parse_responses_api_json(data: Any) -> str:
