@@ -12,7 +12,7 @@ pdf2image
 pillow
 numpy
 asyncpg
-httpx
+json-repair
 structlog
 PyMuPDF
 python-docx

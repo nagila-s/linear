@@ -10,7 +10,7 @@ from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wai
 from src.core.config import get_settings
 from src.core.errors import IntegrationError
 from src.services.prompt_router import PromptRouter
-from src.utils.json_codec import parse_llm_json
+from src.utils.json_codec import merge_json_fragments, parse_llm_json
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,70 @@ class OpenAIService:
             return False
         return bool(self.settings.prompt_routing_enabled)
 
+    def _linearize_max_tokens(self) -> Optional[int]:
+        value = int(self.settings.linearize_max_output_tokens or 0)
+        return value if value > 0 else None
+
+    def _continue_truncated_json(
+        self,
+        page_png: bytes,
+        partial: str,
+        *,
+        page_number: Optional[int] = None,
+    ) -> str:
+        """Pede ao modelo o JSON completo a partir de um rascunho truncado."""
+        clip = partial.strip()
+        if len(clip) > 60000:
+            clip = clip[:2000] + "\n...\n" + clip[-50000:]
+        prompt = (
+            "O JSON abaixo foi TRUNCADO no meio. "
+            "Reescreva o objeto JSON COMPLETO e VALIDO da pagina, "
+            "preservando o conteudo ja presente e completando o que faltou. "
+            "Retorne SOMENTE o JSON final (um unico objeto), sem markdown.\n\n"
+            f"JSON truncado:\n{clip}"
+        )
+        logger.warning(
+            "Continuando JSON truncado pagina=%s partial_chars=%s",
+            page_number,
+            len(partial),
+        )
+        return self._ask_vision(
+            page_png,
+            prompt,
+            self.settings.openai_model_linearization,
+            json_mode=True,
+            max_output_tokens=self._linearize_max_tokens(),
+        )
+
+    def _parse_linearization_content(
+        self,
+        content: str,
+        page_png: bytes,
+        *,
+        page_number: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        try:
+            return self._extract_json(content, page_number=page_number)
+        except IntegrationError:
+            if not content or not content.strip():
+                raise
+            # Sempre tenta completar quando parece truncado ou o parse falhou com corpo parcial.
+            try:
+                continued = self._continue_truncated_json(
+                    page_png,
+                    content,
+                    page_number=page_number,
+                )
+            except IntegrationError:
+                raise
+            merged = merge_json_fragments(content, continued)
+            for candidate in (continued, merged, content):
+                try:
+                    return self._extract_json(candidate, page_number=page_number)
+                except IntegrationError:
+                    continue
+            raise
+
     @retry(
         wait=wait_exponential(multiplier=1, min=1, max=10),
         stop=stop_after_attempt(3),
@@ -81,6 +145,7 @@ class OpenAIService:
             prompt + _JSON_COMPACT_SUFFIX,
         )
         last_error: IntegrationError | None = None
+        max_tokens = self._linearize_max_tokens()
         for attempt, extra in enumerate(attempt_prompts):
             try:
                 content = self._ask_vision(
@@ -88,7 +153,7 @@ class OpenAIService:
                     extra,
                     self.settings.openai_model_linearization,
                     json_mode=True,
-                    max_output_tokens=self.settings.linearize_max_output_tokens,
+                    max_output_tokens=max_tokens,
                 )
             except IntegrationError as exc:
                 last_error = exc
@@ -100,7 +165,11 @@ class OpenAIService:
                 )
                 continue
             try:
-                data = self._extract_json(content, page_number=page_number)
+                data = self._parse_linearization_content(
+                    content,
+                    page_png,
+                    page_number=page_number,
+                )
             except IntegrationError as exc:
                 last_error = exc
                 logger.warning(

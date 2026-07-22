@@ -25,7 +25,7 @@
         { "name": "OPENAI_MODEL_LINEARIZATION", "value": "gpt-5.2" },
         { "name": "OPENAI_MODEL_CONTEXT", "value": "gpt-5.2" },
         { "name": "OPENAI_REASONING_EFFORT", "value": "none" },
-        { "name": "LINEARIZE_MAX_OUTPUT_TOKENS", "value": "65536" },
+        { "name": "LINEARIZE_MAX_OUTPUT_TOKENS", "value": "0" },
         { "name": "PDF_RENDER_DPI", "value": "120" },
         { "name": "PDF_RENDER_BATCH_SIZE", "value": "10" },
         { "name": "LINEAR_PIPELINE_ONLY", "value": "true" },

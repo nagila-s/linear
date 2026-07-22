@@ -33,7 +33,8 @@ class Settings(BaseSettings):
     # none = padrao barato; medium/high multiplica custo por pagina (reasoning tokens)
     openai_reasoning_effort: str = "none"
     classifier_max_output_tokens: int = 16
-    linearize_max_output_tokens: int = 65536
+    # 0 = nao envia max_output_tokens (usa o teto do modelo; evita truncar JSON denso)
+    linearize_max_output_tokens: int = 0
     prompt_routing_enabled: bool = True
     prompts_directory: str = "prompts"
     classification_window_start: int = 20
