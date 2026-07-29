@@ -55,16 +55,30 @@ export function ProgressModal({
             </button>
           ) : null}
         </div>
-        <div className="mt-5 h-3 w-full overflow-hidden rounded-full bg-zinc-200">
+        <div
+          className="mt-5 h-3 w-full overflow-hidden rounded-full bg-zinc-200"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(Math.max(0, Math.min(progress, 100)))}
+          aria-label="Progresso do processamento"
+        >
           <div
             className="h-full rounded-full bg-amber-400 transition-all duration-500"
             style={{ width: `${Math.max(0, Math.min(progress, 100))}%` }}
           />
         </div>
-        <p className={`mt-3 text-sm ${status === "error" ? "text-red-700" : "text-zinc-700"}`}>
+        <p
+          className={`mt-3 text-sm ${status === "error" ? "text-red-700" : "text-zinc-700"}`}
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
           {status === "error" ? `Erro: ${message}` : message}
         </p>
-        <p className="mt-1 text-xs text-zinc-500">Progresso: {Math.round(progress)}%</p>
+        <p className="mt-1 text-xs text-zinc-500" aria-hidden="true">
+          Progresso: {Math.round(progress)}%
+        </p>
 
         <div className="mt-6 flex justify-end gap-3">
           {status === "done" ? (

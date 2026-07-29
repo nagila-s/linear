@@ -31,10 +31,15 @@ export default function HomePage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [progressOpen, setProgressOpen] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [liveMessage, setLiveMessage] = useState("");
   const uploadColumnRef = useRef<HTMLDivElement>(null);
   const formColumnRef = useRef<HTMLDivElement>(null);
 
-  const canSubmit = useMemo(() => Boolean(file && linearize), [file, linearize]);
+  const canSubmit = useMemo(
+    () => Boolean(file && linearize && !submitted),
+    [file, linearize, submitted],
+  );
 
   useEffect(() => {
     const formColumn = formColumnRef.current;
@@ -74,6 +79,43 @@ export default function HomePage() {
   }, [file, isbn]);
 
   useEffect(() => {
+    if (!file) return;
+    setLiveMessage(`Arquivo selecionado: ${file.name}`);
+  }, [file]);
+
+  useEffect(() => {
+    if (lookup.loading) {
+      setLiveMessage("Consultando ISBN...");
+      return;
+    }
+    if (!lookup.data) return;
+    if (lookup.data.found) {
+      setLiveMessage(`ISBN encontrado: ${lookup.data.title ?? "título disponível"}`);
+      return;
+    }
+    setLiveMessage("ISBN não encontrado.");
+  }, [lookup]);
+
+  useEffect(() => {
+    if (!progressOpen) return;
+    if (status.status === "processing") {
+      setLiveMessage(`Processamento em andamento: ${status.message}`);
+      return;
+    }
+    if (status.status === "done") {
+      setLiveMessage("Processamento concluído. Download disponível.");
+      return;
+    }
+    if (status.status === "error") {
+      setLiveMessage(`Erro no processamento: ${status.message}`);
+    }
+  }, [progressOpen, status.status, status.message]);
+
+  useEffect(() => {
+    if (settingsOpen) setLiveMessage("Painel de configurações aberto.");
+  }, [settingsOpen]);
+
+  useEffect(() => {
     if (!jobId || status.status !== "processing") return;
 
     const poll = async () => {
@@ -93,13 +135,20 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-white">
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {liveMessage}
+      </div>
       <Header onOpenSettings={() => setSettingsOpen(true)} />
-      <section className="mx-auto grid max-w-6xl grid-cols-[minmax(320px,38%)_minmax(0,1fr)] items-stretch gap-10 px-8 pb-10 pt-28">
+      <section
+        className="mx-auto grid max-w-6xl grid-cols-[minmax(320px,38%)_minmax(0,1fr)] items-stretch gap-10 px-8 pb-10 pt-28"
+        aria-label="Envio e opções de linearização"
+      >
         <div ref={uploadColumnRef} className="flex min-h-0 flex-col">
           <UploadDropzone
             file={file}
             onFileSelected={(selected) => {
               setFile(selected);
+              setSubmitted(false);
               setLookup({ loading: false, data: null });
             }}
           />
@@ -107,8 +156,11 @@ export default function HomePage() {
 
         <div ref={formColumnRef} className="flex w-full max-w-xl flex-col">
           <div className="mb-4">
-            <label className="mb-2 block text-2xl font-semibold text-black">ISBN</label>
+            <label htmlFor="isbn-input" className="mb-2 block text-2xl font-semibold text-black">
+              ISBN
+            </label>
             <input
+              id="isbn-input"
               type="text"
               value={isbn}
               onChange={(event) => setIsbn(event.target.value)}
@@ -124,11 +176,18 @@ export default function HomePage() {
                 setLookup({ loading: false, data: payload });
               }}
               placeholder="ISBN (opcional)"
+              aria-describedby="isbn-lookup-status"
+              autoComplete="off"
               className="w-full border-2 border-black px-3 py-2 text-lg outline-none focus:ring-2 focus:ring-black focus:ring-offset-1"
             />
           </div>
 
-          <div className="min-h-[72px] text-sm text-black">
+          <div
+            id="isbn-lookup-status"
+            className="min-h-[72px] text-sm text-black"
+            aria-live="polite"
+            aria-atomic="true"
+          >
             {lookup.loading ? <p>Consultando ISBN...</p> : null}
             {!lookup.loading && lookup.data?.found ? (
               <div>
@@ -140,32 +199,41 @@ export default function HomePage() {
             {!lookup.loading && lookup.data && !lookup.data.found ? <p>ISBN não encontrado.</p> : null}
           </div>
 
-          <h2 className="mt-4 text-3xl font-semibold leading-tight text-black">
+          <h2 id="actions-heading" className="mt-4 text-3xl font-semibold leading-tight text-black">
             O que quer fazer com este livro?
           </h2>
 
-          <div className="mt-6 space-y-4 text-xl text-black">
+          <fieldset className="mt-6 space-y-4 text-xl text-black" aria-labelledby="actions-heading">
+            <legend className="sr-only">Opções de processamento</legend>
             <label className="flex items-start gap-3">
               <input
                 type="checkbox"
                 checked={linearize}
-                onChange={(event) => setLinearize(event.target.checked)}
+                onChange={(event) => {
+                  const checked = event.target.checked;
+                  setLinearize(checked);
+                  if (!checked) setMioloOnly(false);
+                }}
                 className="mt-0.5 h-6 w-6 shrink-0 appearance-none border-2 border-black bg-white checked:bg-black focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-1"
               />
               <span>Linearizar e enviar para a Plataforma Braille</span>
             </label>
-            <label className="flex items-start gap-3">
+            <label className="ml-8 flex items-start gap-2.5 border-l-2 border-zinc-300 pl-4 text-base text-zinc-800">
               <input
                 type="checkbox"
                 checked={mioloOnly}
-                onChange={(event) => setMioloOnly(event.target.checked)}
-                disabled={!linearize}
-                className="mt-0.5 h-6 w-6 shrink-0 appearance-none border-2 border-black bg-white checked:bg-black focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-1 disabled:opacity-50"
+                onChange={(event) => {
+                  const checked = event.target.checked;
+                  setMioloOnly(checked);
+                  if (checked) setLinearize(true);
+                }}
+                aria-describedby="miolo-only-hint"
+                className="mt-0.5 h-5 w-5 shrink-0 appearance-none border-2 border-black bg-white checked:bg-black focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-1"
               />
-              <span className={!linearize ? "opacity-50" : undefined}>
+              <span>
                 Apenas miolo
-                <span className="mt-1 block text-sm font-normal text-zinc-600">
-                  Pula capa, ficha, sumário etc. e usa o prompt de conteúdo em todas as páginas.
+                <span id="miolo-only-hint" className="mt-0.5 block text-xs font-normal text-zinc-600">
+                  Pula capa, ficha, sumário etc. e trata todas as páginas como de conteúdo.
                 </span>
               </span>
             </label>
@@ -178,38 +246,49 @@ export default function HomePage() {
                 checked={contextualize}
                 disabled
                 readOnly
+                aria-disabled="true"
                 className="mt-0.5 h-6 w-6 shrink-0 appearance-none border-2 border-black bg-white"
               />
               <span>Extrair imagens e contexto e enviar para o Avalia (em breve)</span>
             </label>
-          </div>
+          </fieldset>
           <div className="mt-auto pt-8">
-          <button
-            type="button"
-            disabled={!canSubmit}
-            onClick={async () => {
-              if (!file) return;
-              try {
-                const normalizedIsbn = isbn.trim() ? normalizeIsbn(isbn) : undefined;
-                const payload = await startPdfJob(file, normalizedIsbn, { mioloOnly });
-                setJobId(payload.jobId);
-                setProgressOpen(true);
-                setStatus({
-                  status: "processing",
-                  progress: 5,
-                  message: payload.message ?? "Processamento iniciado...",
-                  title: lookup.data?.title ?? file.name.replace(/\.pdf$/i, ""),
-                });
-              } catch (error) {
-                const message =
-                  error instanceof Error ? error.message : "Não foi possível iniciar o processamento.";
-                window.alert(message);
+            <button
+              type="button"
+              disabled={!canSubmit}
+              aria-disabled={!canSubmit}
+              aria-busy={submitted}
+              onClick={async () => {
+                if (!file || submitted) return;
+                setSubmitted(true);
+                setLiveMessage("Iniciando linearização...");
+                try {
+                  const normalizedIsbn = isbn.trim() ? normalizeIsbn(isbn) : undefined;
+                  const payload = await startPdfJob(file, normalizedIsbn, { mioloOnly });
+                  setJobId(payload.jobId);
+                  setProgressOpen(true);
+                  setStatus({
+                    status: "processing",
+                    progress: 5,
+                    message: payload.message ?? "Processamento iniciado...",
+                    title: lookup.data?.title ?? file.name.replace(/\.pdf$/i, ""),
+                  });
+                } catch (error) {
+                  setSubmitted(false);
+                  const message =
+                    error instanceof Error ? error.message : "Não foi possível iniciar o processamento.";
+                  setLiveMessage(message);
+                  window.alert(message);
+                }
+              }}
+              className={
+                submitted
+                  ? "cursor-not-allowed rounded-2xl border-2 border-black bg-zinc-400 px-10 py-4 text-xl font-bold text-zinc-800"
+                  : "rounded-2xl border-2 border-black bg-amber-400 px-10 py-4 text-xl font-bold text-black hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-50"
               }
-            }}
-            className="rounded-2xl border-2 border-black bg-amber-400 px-10 py-4 text-xl font-bold text-black hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Linearizar 
-          </button>
+            >
+              {submitted ? "Linearizando..." : "Linearizar"}
+            </button>
           </div>
         </div>
       </section>
@@ -226,6 +305,7 @@ export default function HomePage() {
           jobId
             ? async () => {
                 setRetrying(true);
+                setLiveMessage("Reenfileirando processamento...");
                 try {
                   const response = await fetch(`/api/process/${jobId}/retry`, { method: "POST" });
                   const payload = (await response.json()) as ProcessStatusResponse & { error?: string };
@@ -237,6 +317,7 @@ export default function HomePage() {
                     }));
                     return;
                   }
+                  setSubmitted(true);
                   setStatus((prev) => ({
                     ...prev,
                     status: "processing",
@@ -261,6 +342,7 @@ export default function HomePage() {
           const link = document.createElement("a");
           link.href = `/api/process/${jobId}/download?filename=${encodeURIComponent(baseName)}.json`;
           link.click();
+          setLiveMessage("Download do JSON iniciado.");
         }}
       />
 

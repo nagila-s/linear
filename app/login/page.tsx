@@ -83,26 +83,39 @@ export default function LoginPage() {
             }
           }}
         >
-          <div className="relative">
-            <input
-              type={showPassword ? "text" : "password"}
-              placeholder="Senha"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="w-full rounded-lg border border-zinc-300 px-3 py-2 pr-24 outline-none focus:border-zinc-500"
-              required
-              autoComplete="current-password"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((prev) => !prev)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
-              aria-pressed={showPassword}
-            >
-              {showPassword ? "Ocultar" : "Mostrar"}
-            </button>
+          <div>
+            <label htmlFor="login-password" className="mb-1.5 block text-sm font-medium text-zinc-800">
+              Senha
+            </label>
+            <div className="relative">
+              <input
+                id="login-password"
+                type={showPassword ? "text" : "password"}
+                placeholder="Senha"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                className="w-full rounded-lg border border-zinc-300 px-3 py-2 pr-24 outline-none focus:border-zinc-500"
+                required
+                autoComplete="current-password"
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? "login-error" : undefined}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+                aria-pressed={showPassword}
+                aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+              >
+                {showPassword ? "Ocultar" : "Mostrar"}
+              </button>
+            </div>
           </div>
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          {error ? (
+            <p id="login-error" className="text-sm text-red-600" role="alert">
+              {error}
+            </p>
+          ) : null}
           <button
             type="submit"
             disabled={loading}

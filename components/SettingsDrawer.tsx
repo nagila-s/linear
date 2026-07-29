@@ -50,21 +50,37 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-30 flex justify-end bg-black/40" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-30 flex justify-end bg-black/40"
+      onClick={onClose}
+      role="presentation"
+    >
       <aside
         className="h-full w-full max-w-2xl overflow-hidden bg-white shadow-2xl"
         onClick={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-drawer-title"
       >
         <div className="flex h-14 items-center justify-between border-b px-5">
-          <h3 className="text-lg font-semibold text-zinc-900">Configurações</h3>
-          <button type="button" onClick={onClose} className="text-zinc-700 hover:text-zinc-900">
+          <h3 id="settings-drawer-title" className="text-lg font-semibold text-zinc-900">
+            Configurações
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-zinc-700 hover:text-zinc-900"
+            aria-label="Fechar configurações"
+          >
             Fechar
           </button>
         </div>
 
-        <div className="flex border-b">
+        <div className="flex border-b" role="tablist" aria-label="Seções de configuração">
           <button
             type="button"
+            role="tab"
+            aria-selected={tab === "prompt"}
             onClick={() => setTab("prompt")}
             className={`px-5 py-3 text-sm font-medium ${tab === "prompt" ? "border-b-2 border-zinc-900 text-zinc-900" : "text-zinc-500"}`}
           >
@@ -72,6 +88,8 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={tab === "books"}
             onClick={() => setTab("books")}
             className={`px-5 py-3 text-sm font-medium ${tab === "books" ? "border-b-2 border-zinc-900 text-zinc-900" : "text-zinc-500"}`}
           >
@@ -81,8 +99,12 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
 
         <div className="h-[calc(100%-7rem)] overflow-auto p-5">
           {tab === "prompt" ? (
-            <div className="space-y-4">
+            <div className="space-y-4" role="tabpanel" aria-label="Prompt">
+              <label htmlFor="settings-prompt" className="block text-sm font-medium text-zinc-800">
+                Prompt de linearização
+              </label>
               <textarea
+                id="settings-prompt"
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
                 className="h-[420px] w-full rounded-lg border border-zinc-300 p-3 text-sm outline-none focus:border-zinc-500"
@@ -108,15 +130,30 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
           ) : null}
 
           {tab === "books" ? (
-            <div className="overflow-hidden rounded-lg border border-zinc-200">
+            <div
+              className="overflow-hidden rounded-lg border border-zinc-200"
+              role="tabpanel"
+              aria-label="Livros processados"
+            >
               <table className="w-full text-left text-sm">
+                <caption className="sr-only">Lista de livros processados</caption>
                 <thead className="bg-zinc-50">
                   <tr>
-                    <th className="px-3 py-2">Título</th>
-                    <th className="px-3 py-2">Data</th>
-                    <th className="px-3 py-2">Ações</th>
-                    <th className="px-3 py-2">Status</th>
-                    <th className="px-3 py-2">Arquivo</th>
+                    <th scope="col" className="px-3 py-2">
+                      Título
+                    </th>
+                    <th scope="col" className="px-3 py-2">
+                      Data
+                    </th>
+                    <th scope="col" className="px-3 py-2">
+                      Ações
+                    </th>
+                    <th scope="col" className="px-3 py-2">
+                      Status
+                    </th>
+                    <th scope="col" className="px-3 py-2">
+                      Arquivo
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
