@@ -3,7 +3,7 @@ import re
 from typing import Any
 
 from src.core.config import get_settings
-from src.services.prompt_router import PromptRouter
+from src.services.prompt_router import CONTENT_PAGE_TYPE, PromptRouter
 from src.worker.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -219,22 +219,13 @@ def _build_dorina_context(
     return "\n\n".join(parts)
 
 
-def _supports_figure_description(
-    content: Any,
-    *,
-    page_number: int,
-    total_pages: int,
-    router: PromptRouter,
-    miolo_only: bool = False,
-) -> bool:
+def _supports_figure_description(content: Any, *, miolo_only: bool = False) -> bool:
     if not isinstance(content, dict):
-        return False
-    page_type = str(content.get("tipo_pagina") or PromptRouter.CONTENT_PAGE_TYPE).strip().lower()
-    if not PromptRouter.supports_figure_description(page_type):
         return False
     if miolo_only:
         return True
-    return not router.should_skip_figure_pipeline(page_number, total_pages, page_type)
+    page_type = str(content.get("tipo_pagina") or CONTENT_PAGE_TYPE).strip().lower()
+    return PromptRouter.supports_figure_description(page_type)
 
 
 async def run(ctx: dict) -> dict:
@@ -250,7 +241,6 @@ async def run(ctx: dict) -> dict:
     job_id = ctx["job_id"]
     process_version = ctx["process_version"]
     concurrency = max(1, int(ctx.get("linearize_page_concurrency") or 4))
-    prompt_router = openai.prompt_router
     miolo_only = bool(ctx.get("miolo_only") or getattr(openai, "miolo_only", False))
 
     pages = ctx.get("pages", [])
@@ -300,15 +290,7 @@ async def run(ctx: dict) -> dict:
                 )
                 describe_figures = (
                     not settings.linear_pipeline_only
-                    and PromptRouter.supports_figure_description(page_type)
-                    and (
-                        miolo_only
-                        or not openai.prompt_router.should_skip_figure_pipeline(
-                            page_number,
-                            total_pages,
-                            page_type,
-                        )
-                    )
+                    and (miolo_only or PromptRouter.supports_figure_description(page_type))
                     and bool(figure_keys)
                 )
                 if describe_figures:
@@ -411,13 +393,7 @@ async def run(ctx: dict) -> dict:
             return
 
         page_structure = linear_entry["content"]
-        if not _supports_figure_description(
-            page_structure,
-            page_number=page_number,
-            total_pages=total_pages,
-            router=prompt_router,
-            miolo_only=miolo_only,
-        ):
+        if not _supports_figure_description(page_structure, miolo_only=miolo_only):
             return
 
         refs, captions = _extract_image_refs_and_captions(page_structure)

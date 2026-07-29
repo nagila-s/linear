@@ -253,18 +253,7 @@ class OpenAIService:
                 page_number=page_number,
                 total_pages=total_pages,
             )
-        if not self.prompt_router.supports_figure_description(page_type):
-            return {
-                "page_structure": self.linearize_page(
-                    page_png,
-                    prompt_version,
-                    page_number=page_number,
-                    total_pages=total_pages,
-                    page_type=page_type,
-                ),
-                "figure_contexts": {},
-            }
-        if self.prompt_router.should_skip_figure_pipeline(page_number or 0, total_pages or 0, page_type):
+        if self.prompt_router.should_skip_figure_pipeline(page_type):
             return {
                 "page_structure": self.linearize_page(
                     page_png,

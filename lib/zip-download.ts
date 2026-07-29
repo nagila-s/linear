@@ -97,7 +97,10 @@ export function buildZipStore(files: { name: string; content: string }[]): Blob 
     u16(0),
   ]);
 
-  return new Blob([concat([...localParts, centralDir, end])], { type: "application/zip" });
+  const archive = concat([...localParts, centralDir, end]);
+  const buffer = new ArrayBuffer(archive.byteLength);
+  new Uint8Array(buffer).set(archive);
+  return new Blob([buffer], { type: "application/zip" });
 }
 
 export function downloadBlob(blob: Blob, filename: string): void {

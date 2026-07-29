@@ -93,16 +93,10 @@ class PromptRouter:
     def supports_figure_description(page_type: str) -> bool:
         return (page_type or "").strip().lower() == CONTENT_PAGE_TYPE
 
-    def should_skip_figure_pipeline(
-        self,
-        page_number: int,
-        total_pages: int,
-        page_type: str,
-    ) -> bool:
-        """Capa, prefácio etc. ficam no início/fim; mesmo se classificador errar, não descreve figuras."""
-        if not self.supports_figure_description(page_type):
-            return True
-        return self.should_classify(page_number, total_pages)
+    @classmethod
+    def should_skip_figure_pipeline(cls, page_type: str) -> bool:
+        """Só páginas que não são de conteúdo (capa, ficha, sumário) ficam sem descrição de figura."""
+        return not cls.supports_figure_description(page_type)
 
     def resolve_page_type(
         self,

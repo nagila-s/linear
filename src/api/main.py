@@ -259,6 +259,54 @@ async def create_job_from_upload(
         raise HTTPException(status_code=500, detail="Falha interna ao criar job.") from exc
 
 
+@app.post(f"{settings.api_prefix}/jobs/test-run")
+async def test_run(
+    isbn: str | None = Form(None),
+    miolo_only: bool = Form(False),
+    prompt_overrides: str | None = Form(None),
+    pdf_file: UploadFile = File(...),
+) -> dict:
+    """Processa um PDF pequeno na hora (OpenAI + Dorina) e devolve o JSON.
+
+    Nao cria job, nao usa fila/worker e nao grava nos prompts do sistema.
+    """
+    from starlette.concurrency import run_in_threadpool
+
+    from src.pipeline.test_run import run_test_linearization
+
+    try:
+        if pdf_file.content_type not in ("application/pdf", "application/octet-stream"):
+            raise ValidationError("Arquivo precisa ser PDF.")
+        pdf_content = await pdf_file.read()
+        if not pdf_content:
+            raise ValidationError("Arquivo PDF vazio.")
+
+        overrides_payload: dict[str, str] = {}
+        if prompt_overrides:
+            try:
+                parsed = json.loads(prompt_overrides)
+            except json.JSONDecodeError as exc:
+                raise ValidationError("prompt_overrides deve ser JSON valido.") from exc
+            overrides_payload = sanitize_prompt_overrides(parsed)
+
+        normalized_isbn = resolve_book_key(isbn, pdf_file.filename)
+        result = await run_in_threadpool(
+            run_test_linearization,
+            pdf_content,
+            prompt_overrides=overrides_payload,
+            miolo_only=miolo_only,
+            isbn=normalized_isbn,
+        )
+        return result
+    except AppError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Erro no test-run: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Falha no teste: {exc}") from exc
+
+
 @app.get(f"{settings.api_prefix}/jobs/{{job_id}}", response_model=JobResponse)
 def get_job(job_id: UUID) -> JobResponse:
     data = jobs_repo.get(job_id)

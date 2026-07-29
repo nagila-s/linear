@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { BookRow } from "@/types";
 
@@ -50,7 +51,7 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
       >
         <div className="flex h-14 items-center justify-between border-b px-5">
           <h3 id="settings-drawer-title" className="text-lg font-semibold text-zinc-900">
-            Livros processados
+            Configurações
           </h3>
           <button
             type="button"
@@ -63,6 +64,21 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
         </div>
 
         <div className="h-[calc(100%-3.5rem)] overflow-auto p-5">
+          <div className="mb-5 rounded-lg border border-zinc-200 p-4">
+            <p className="text-sm font-semibold text-zinc-900">Área de testes</p>
+            <p className="mt-1 text-sm text-zinc-600">
+              Edite cópias dos prompts e rode um livro sem alterar os prompts de produção.
+            </p>
+            <Link
+              href="/testes"
+              onClick={onClose}
+              className="mt-3 inline-flex rounded-full border-2 border-black bg-amber-400 px-4 py-2 text-sm font-semibold text-black hover:bg-amber-300"
+            >
+              Abrir área de testes
+            </Link>
+          </div>
+
+          <h4 className="mb-3 text-sm font-semibold text-zinc-900">Livros processados</h4>
           <div className="overflow-hidden rounded-lg border border-zinc-200">
             <table className="w-full text-left text-sm">
               <caption className="sr-only">Lista de livros processados</caption>
