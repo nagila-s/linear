@@ -23,7 +23,3 @@ export type BookRow = {
   actions: string[];
   status: "processing" | "done" | "error";
 };
-
-export type PromptSettingsResponse = {
-  prompt: string;
-};

@@ -62,6 +62,8 @@ class UploadInitRequest(BaseModel):
     job_type: JobType = JobType.LINEARIZAR
     prompt_version: str = Field(default="v1")
     miolo_only: bool = False
+    test_run: bool = False
+    prompt_overrides: Optional[Dict[str, str]] = None
 
 
 class UploadInitResponse(BaseModel):
@@ -83,6 +85,8 @@ class UploadCompleteRequest(BaseModel):
     job_type: JobType = JobType.LINEARIZAR
     prompt_version: str = Field(default="v1")
     miolo_only: bool = False
+    test_run: bool = False
+    prompt_overrides: Optional[Dict[str, str]] = None
 
 
 class FigureContext(BaseModel):

@@ -36,7 +36,12 @@ _JSON_COMPACT_SUFFIX = (
 
 
 class OpenAIService:
-    def __init__(self, *, miolo_only: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        miolo_only: bool = False,
+        prompt_overrides: Optional[Dict[str, str]] = None,
+    ) -> None:
         settings = get_settings()
         if not settings.openai_api_key:
             raise IntegrationError("OPENAI_API_KEY nao configurado.")
@@ -47,6 +52,7 @@ class OpenAIService:
             settings.prompts_directory,
             window_start=settings.classification_window_start,
             window_end=settings.classification_window_end,
+            overrides=prompt_overrides,
         )
 
     @property

@@ -10,6 +10,7 @@ from src.repositories.artifacts import ArtifactsRepository
 from src.repositories.db import get_conn
 from src.repositories.jobs import JobsRepository
 from src.services.openai_client import OpenAIService
+from src.services.prompt_router import sanitize_prompt_overrides
 from src.services.storage import StorageService
 from src.worker.pipeline.stages import describe, extract_images
 from src.worker.services.dorina_client import DorinaClient
@@ -81,7 +82,9 @@ async def run(job: dict, _queue) -> dict:
     if not isinstance(job_metadata, dict):
         job_metadata = {}
     miolo_only = bool(job_metadata.get("miolo_only"))
-    openai = OpenAIService(miolo_only=miolo_only)
+    prompt_overrides = sanitize_prompt_overrides(job_metadata.get("prompt_overrides"))
+    test_run = bool(job_metadata.get("test_run")) or bool(prompt_overrides)
+    openai = OpenAIService(miolo_only=miolo_only, prompt_overrides=prompt_overrides or None)
     dorina = DorinaClient()
 
     job_id = UUID(str(job_data["id"]))
@@ -89,6 +92,12 @@ async def run(job: dict, _queue) -> dict:
 
     if miolo_only:
         logger.info("job=%s miolo_only=true — classificador desligado, prompt base em todas as paginas", job_data["id"])
+    if test_run:
+        logger.info(
+            "job=%s test_run=true — usando %s prompt override(s)",
+            job_data["id"],
+            len(prompt_overrides),
+        )
 
     ctx = {
         "job_id": str(job_data["id"]),

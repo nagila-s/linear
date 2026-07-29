@@ -4,6 +4,8 @@ const VERCEL_BFF_MAX_BYTES = 4.5 * 1024 * 1024;
 
 export type StartPdfJobOptions = {
   mioloOnly?: boolean;
+  testRun?: boolean;
+  promptOverrides?: Record<string, string>;
 };
 
 type UploadInitPayload = {
@@ -44,6 +46,10 @@ function isPayloadTooLargeMessage(message: string): boolean {
   );
 }
 
+function hasPromptOverrides(options: StartPdfJobOptions): boolean {
+  return Boolean(options.promptOverrides && Object.keys(options.promptOverrides).length > 0);
+}
+
 async function readApiJson(response: Response): Promise<{
   id?: string;
   detail?: string | { msg?: string }[];
@@ -71,6 +77,7 @@ export async function uploadPdfViaPresigned(
   options: StartPdfJobOptions = {},
 ): Promise<{ jobId: string; message?: string }> {
   const mioloOnly = Boolean(options.mioloOnly);
+  const testRun = Boolean(options.testRun) || hasPromptOverrides(options);
   const initResponse = await fetch("/api/process/upload-init", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -102,17 +109,23 @@ export async function uploadPdfViaPresigned(
     );
   }
 
+  const completeBody: Record<string, unknown> = {
+    isbn: initPayload.isbn,
+    storage_path: initPayload.storage_path,
+    object_path: initPayload.object_path,
+    token: initPayload.token,
+    filename: file.name,
+    miolo_only: mioloOnly,
+    test_run: testRun,
+  };
+  if (hasPromptOverrides(options)) {
+    completeBody.prompt_overrides = options.promptOverrides;
+  }
+
   const completeResponse = await fetch("/api/process/upload-complete", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      isbn: initPayload.isbn,
-      storage_path: initPayload.storage_path,
-      object_path: initPayload.object_path,
-      token: initPayload.token,
-      filename: file.name,
-      miolo_only: mioloOnly,
-    }),
+    body: JSON.stringify(completeBody),
   });
   let completePayload: { jobId?: string; message?: string; error?: string };
   try {
@@ -152,6 +165,11 @@ export async function uploadPdfToApi(
   form.append("job_type", "linearizar");
   form.append("prompt_version", "v1");
   form.append("miolo_only", options.mioloOnly ? "true" : "false");
+  const testRun = Boolean(options.testRun) || hasPromptOverrides(options);
+  form.append("test_run", testRun ? "true" : "false");
+  if (hasPromptOverrides(options)) {
+    form.append("prompt_overrides", JSON.stringify(options.promptOverrides));
+  }
 
   let response: Response;
   try {
@@ -202,6 +220,11 @@ export async function uploadPdfViaBff(
   formData.append("linearize", "true");
   formData.append("contextualize", "false");
   formData.append("miolo_only", options.mioloOnly ? "true" : "false");
+  const testRun = Boolean(options.testRun) || hasPromptOverrides(options);
+  formData.append("test_run", testRun ? "true" : "false");
+  if (hasPromptOverrides(options)) {
+    formData.append("prompt_overrides", JSON.stringify(options.promptOverrides));
+  }
 
   const response = await fetch("/api/process", { method: "POST", body: formData });
   const payload = (await response.json()) as {

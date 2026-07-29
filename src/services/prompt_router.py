@@ -34,6 +34,29 @@ PROMPT_FILES: Dict[str, str] = {
     "conteudo": "base.txt",
 }
 
+ALLOWED_PROMPT_FILENAMES = frozenset(
+    {
+        *PROMPT_FILES.values(),
+        "_shared_rules.txt",
+        "classificador.txt",
+    }
+)
+
+
+def sanitize_prompt_overrides(raw: object) -> Dict[str, str]:
+    """Mantém só arquivos conhecidos; ignora chaves inválidas."""
+    if not isinstance(raw, dict):
+        return {}
+    cleaned: Dict[str, str] = {}
+    for key, value in raw.items():
+        name = str(key).strip()
+        if name not in ALLOWED_PROMPT_FILENAMES:
+            continue
+        if not isinstance(value, str):
+            continue
+        cleaned[name] = value
+    return cleaned
+
 
 class PromptRouter:
     def __init__(
@@ -42,10 +65,12 @@ class PromptRouter:
         *,
         window_start: int = 20,
         window_end: int = 15,
+        overrides: Optional[Dict[str, str]] = None,
     ) -> None:
         self.prompts_dir = Path(prompts_dir)
         self.window_start = max(1, window_start)
         self.window_end = max(0, window_end)
+        self._overrides = sanitize_prompt_overrides(overrides or {})
         self._cache: Dict[str, str] = {}
         self._shared_rules = self._read_file("_shared_rules.txt")
 
@@ -109,6 +134,8 @@ class PromptRouter:
         return self._read_file("classificador.txt")
 
     def _read_file(self, filename: str) -> str:
+        if filename in self._overrides:
+            return self._overrides[filename].strip()
         path = self.prompts_dir / filename
         if not path.is_file():
             return ""

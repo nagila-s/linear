@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 type HeaderProps = {
   onOpenSettings: () => void;
 };
@@ -27,7 +29,17 @@ export function Header({ onOpenSettings }: HeaderProps) {
   return (
     <header className="fixed inset-x-0 top-0 z-20 border-b-2 border-black bg-white">
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-8">
-        <div className="text-4xl font-bold leading-none text-black">Linear</div>
+        <div className="flex items-center gap-6">
+          <Link href="/" className="text-4xl font-bold leading-none text-black hover:opacity-80">
+            Linear
+          </Link>
+          <Link
+            href="/testes"
+            className="text-sm font-semibold text-zinc-700 underline-offset-4 hover:text-black hover:underline"
+          >
+            Área de testes
+          </Link>
+        </div>
         <button
           type="button"
           onClick={onOpenSettings}

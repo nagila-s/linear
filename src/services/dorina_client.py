@@ -6,6 +6,15 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from src.core.config import get_settings
 from src.core.errors import IntegrationError
 
+# Recortes grandes às vezes incluem texto da página ao redor/abaixo da figura.
+_DORINA_IMAGE_SCOPE_INSTRUCTION = (
+    "Descreva APENAS o que está visível na imagem enviada (a figura/ilustração em si). "
+    "Ignore e NÃO transcreva texto de parágrafo, exercício, legenda de página, número de página "
+    "ou qualquer conteúdo do livro que apareça ao redor ou abaixo da imagem por causa do recorte. "
+    "Se houver texto que faça parte da própria figura (rótulos, balões, títulos dentro da arte), "
+    "aí sim inclua na descrição."
+)
+
 
 class DorinaService:
     def __init__(self) -> None:
@@ -14,6 +23,13 @@ class DorinaService:
             raise IntegrationError("DORINA_API_URL nao configurado.")
         if not self.settings.dorina_api_key:
             raise IntegrationError("DORINA_API_KEY nao configurado.")
+
+    @staticmethod
+    def _compose_context(context: str) -> str:
+        base = (context or "").strip()
+        if not base:
+            return _DORINA_IMAGE_SCOPE_INSTRUCTION
+        return f"{base}\n\n{_DORINA_IMAGE_SCOPE_INSTRUCTION}"
 
     @retry(
         wait=wait_exponential(multiplier=1, min=2, max=30),
@@ -42,10 +58,9 @@ class DorinaService:
                 "url": image_url,
                 "braille": self.settings.dorina_braille,
                 "documentType": self.settings.dorina_document_type,
+                "context": self._compose_context(context),
             }
         }
-        if context.strip():
-            payload["data"]["context"] = context.strip()
         try:
             response = requests.post(
                 self.settings.dorina_api_url,

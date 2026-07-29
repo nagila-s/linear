@@ -1,4 +1,5 @@
 import logging
+import json
 from uuid import UUID
 
 from dotenv import load_dotenv
@@ -23,6 +24,7 @@ from src.repositories.books import BooksRepository
 from src.repositories.jobs import JobsRepository
 from src.services.isbn import resolve_book_key, validate_book_key
 from src.services.pdf_storage import PdfStorageService, is_payload_too_large
+from src.services.prompt_router import sanitize_prompt_overrides
 from src.services.storage import StorageService
 
 load_dotenv()
@@ -59,8 +61,12 @@ def _create_linearize_job(
     storage_path_pdf: str,
     prompt_version: str,
     miolo_only: bool = False,
+    test_run: bool = False,
+    prompt_overrides: dict[str, str] | None = None,
 ) -> JobResponse:
     process_version = _process_version()
+    overrides = sanitize_prompt_overrides(prompt_overrides)
+    is_test = bool(test_run) or bool(overrides)
     books_repo.upsert(
         normalized_isbn,
         metadata={
@@ -68,20 +74,25 @@ def _create_linearize_job(
             "storage_path_pdf": storage_path_pdf,
         },
     )
+    job_metadata: dict = {
+        "filename": filename,
+        "pipeline_mode": JobType.LINEARIZAR.value,
+        "linearize_only": True,
+        "miolo_only": bool(miolo_only),
+        "process_version": process_version,
+        "openai_model": settings.openai_model_linearization,
+        "pdf_render_dpi": settings.pdf_render_dpi,
+        "pdf_storage_path": storage_path_pdf,
+    }
+    if is_test:
+        job_metadata["test_run"] = True
+    if overrides:
+        job_metadata["prompt_overrides"] = overrides
     created = jobs_repo.create(
         isbn=normalized_isbn,
         job_type=JobType.LINEARIZAR,
         prompt_version=prompt_version,
-        metadata={
-            "filename": filename,
-            "pipeline_mode": JobType.LINEARIZAR.value,
-            "linearize_only": True,
-            "miolo_only": bool(miolo_only),
-            "process_version": process_version,
-            "openai_model": settings.openai_model_linearization,
-            "pdf_render_dpi": settings.pdf_render_dpi,
-            "pdf_storage_path": storage_path_pdf,
-        },
+        metadata=job_metadata,
     )
     return JobResponse.model_validate(created)
 
@@ -182,6 +193,8 @@ def complete_presigned_upload(payload: UploadCompleteRequest) -> JobResponse:
             storage_path_pdf=payload.storage_path,
             prompt_version=payload.prompt_version,
             miolo_only=payload.miolo_only,
+            test_run=payload.test_run,
+            prompt_overrides=payload.prompt_overrides,
         )
     except AppError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -196,6 +209,8 @@ async def create_job_from_upload(
     job_type: JobType = Form(JobType.LINEARIZAR),
     prompt_version: str = Form("v1"),
     miolo_only: bool = Form(False),
+    test_run: bool = Form(False),
+    prompt_overrides: str | None = Form(None),
     pdf_file: UploadFile = File(...),
 ) -> JobResponse:
     try:
@@ -210,6 +225,14 @@ async def create_job_from_upload(
         if not pdf_content:
             raise ValidationError("Arquivo PDF vazio.")
 
+        overrides_payload: dict[str, str] | None = None
+        if prompt_overrides:
+            try:
+                parsed = json.loads(prompt_overrides)
+            except json.JSONDecodeError as exc:
+                raise ValidationError("prompt_overrides deve ser JSON valido.") from exc
+            overrides_payload = sanitize_prompt_overrides(parsed) or None
+
         process_version = _process_version()
         storage_path_pdf = pdf_storage.store(normalized_isbn, pdf_content, process_version=process_version)
         return _create_linearize_job(
@@ -218,6 +241,8 @@ async def create_job_from_upload(
             storage_path_pdf=storage_path_pdf,
             prompt_version=prompt_version,
             miolo_only=miolo_only,
+            test_run=test_run,
+            prompt_overrides=overrides_payload,
         )
     except AppError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
