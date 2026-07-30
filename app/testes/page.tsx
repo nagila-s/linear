@@ -6,15 +6,11 @@ import { Header } from "@/components/Header";
 import { SettingsDrawer } from "@/components/SettingsDrawer";
 import { UploadDropzone } from "@/components/UploadDropzone";
 import { extractIsbnFromFilename, isValidIsbn, normalizeIsbn } from "@/lib/isbn";
+import { type PromptTestResult, runPromptTest } from "@/lib/upload-job";
 import { slugify } from "@/lib/utils";
 import { buildZipStore, downloadBlob } from "@/lib/zip-download";
 
 type PromptFile = { name: string; content: string };
-
-type TestRunResult = {
-  stats?: { pages?: number; figures?: number; described_ok?: number; dorina_failed?: number };
-  [key: string]: unknown;
-};
 
 export default function TestesPage() {
   const [prompts, setPrompts] = useState<Record<string, string>>({});
@@ -27,7 +23,7 @@ export default function TestesPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState("");
-  const [result, setResult] = useState<TestRunResult | null>(null);
+  const [result, setResult] = useState<PromptTestResult | null>(null);
 
   const names = useMemo(() => Object.keys(prompts).sort((a, b) => a.localeCompare(b, "pt-BR")), [prompts]);
 
@@ -79,17 +75,11 @@ export default function TestesPage() {
     setRunError("");
     setResult(null);
     try {
-      const form = new FormData();
-      form.append("pdf_file", file);
-      if (isbn.trim()) form.append("isbn", normalizeIsbn(isbn));
-      form.append("miolo_only", mioloOnly ? "true" : "false");
-      form.append("prompt_overrides", JSON.stringify(prompts));
-
-      const response = await fetch("/api/test-run", { method: "POST", body: form });
-      const payload = (await response.json()) as TestRunResult & { error?: string };
-      if (!response.ok) {
-        throw new Error(payload.error || "Falha ao rodar o teste.");
-      }
+      const payload = await runPromptTest(file, {
+        isbn: isbn.trim() ? normalizeIsbn(isbn) : undefined,
+        mioloOnly,
+        promptOverrides: prompts,
+      });
       setResult(payload);
     } catch (error) {
       setRunError(error instanceof Error ? error.message : "Falha ao rodar o teste.");
