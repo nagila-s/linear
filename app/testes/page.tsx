@@ -3,12 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Header } from "@/components/Header";
+import { ProgressModal } from "@/components/ProgressModal";
 import { SettingsDrawer } from "@/components/SettingsDrawer";
 import { UploadDropzone } from "@/components/UploadDropzone";
 import { extractIsbnFromFilename, isValidIsbn, normalizeIsbn } from "@/lib/isbn";
-import { type PromptTestResult, runPromptTest } from "@/lib/upload-job";
+import { startPdfJob } from "@/lib/upload-job";
 import { slugify } from "@/lib/utils";
 import { buildZipStore, downloadBlob } from "@/lib/zip-download";
+import type { ProcessStatusResponse } from "@/types";
 
 type PromptFile = { name: string; content: string };
 
@@ -20,10 +22,16 @@ export default function TestesPage() {
   const [file, setFile] = useState<File | null>(null);
   const [isbn, setIsbn] = useState("");
   const [mioloOnly, setMioloOnly] = useState(false);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [status, setStatus] = useState<ProcessStatusResponse>({
+    status: "processing",
+    progress: 0,
+    message: "Preparando processamento...",
+  });
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [running, setRunning] = useState(false);
-  const [runError, setRunError] = useState("");
-  const [result, setResult] = useState<PromptTestResult | null>(null);
+  const [progressOpen, setProgressOpen] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
   const names = useMemo(() => Object.keys(prompts).sort((a, b) => a.localeCompare(b, "pt-BR")), [prompts]);
 
@@ -62,31 +70,23 @@ export default function TestesPage() {
     if (guess) setIsbn(guess);
   }, [file, isbn]);
 
-  const canSubmit = Boolean(file && !running && names.length > 0);
-  const resultBaseName = slugify(file?.name?.replace(/\.pdf$/i, "") || "teste-prompts");
+  useEffect(() => {
+    if (!jobId || status.status !== "processing") return;
+    const poll = async () => {
+      const response = await fetch(`/api/process/${jobId}/status`);
+      if (!response.ok) return;
+      const payload = (await response.json()) as ProcessStatusResponse;
+      setStatus((prev) => ({
+        ...payload,
+        title: payload.title ?? prev.title,
+      }));
+    };
+    void poll();
+    const interval = window.setInterval(poll, 10000);
+    return () => window.clearInterval(interval);
+  }, [jobId, status.status]);
 
-  async function runTest() {
-    if (!file || running) return;
-    if (isbn.trim() && !isValidIsbn(normalizeIsbn(isbn))) {
-      window.alert("ISBN inválido.");
-      return;
-    }
-    setRunning(true);
-    setRunError("");
-    setResult(null);
-    try {
-      const payload = await runPromptTest(file, {
-        isbn: isbn.trim() ? normalizeIsbn(isbn) : undefined,
-        mioloOnly,
-        promptOverrides: prompts,
-      });
-      setResult(payload);
-    } catch (error) {
-      setRunError(error instanceof Error ? error.message : "Falha ao rodar o teste.");
-    } finally {
-      setRunning(false);
-    }
-  }
+  const canSubmit = Boolean(file && !submitted && names.length > 0);
 
   return (
     <main className="min-h-screen bg-white">
@@ -101,8 +101,9 @@ export default function TestesPage() {
             </p>
             <h1 className="mt-2 text-3xl font-semibold text-black">Área de testes</h1>
             <p className="mt-1 max-w-2xl text-sm text-zinc-700">
-              Edite cópias dos prompts do sistema e rode um livro pequeno na hora, direto na OpenAI e
-              na Dorina. Nada aqui sobrescreve os prompts de produção nem passa pela fila principal.
+              Edite cópias dos prompts do sistema e rode um livro só com esses textos. O teste usa a
+              fila de processamento com os prompts editados aqui — nada sobrescreve os prompts de
+              produção nem altera o upload da tela principal.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -179,8 +180,7 @@ export default function TestesPage() {
             file={file}
             onFileSelected={(selectedFile) => {
               setFile(selectedFile);
-              setResult(null);
-              setRunError("");
+              setSubmitted(false);
             }}
           />
           <div className="flex flex-col">
@@ -210,52 +210,99 @@ export default function TestesPage() {
               </span>
             </label>
             <p className="mt-3 text-xs text-zinc-500">
-              O teste roda na hora e pode demorar alguns segundos por página. Use PDFs pequenos.
+              O teste entra na fila de processamento e usa os prompts editados aqui. Ao final, baixe o
+              JSON para conferir o resultado.
             </p>
             <button
               type="button"
               disabled={!canSubmit}
-              onClick={runTest}
+              onClick={async () => {
+                if (!file || submitted) return;
+                if (isbn.trim() && !isValidIsbn(normalizeIsbn(isbn))) {
+                  window.alert("ISBN inválido.");
+                  return;
+                }
+                setSubmitted(true);
+                try {
+                  const normalizedIsbn = isbn.trim() ? normalizeIsbn(isbn) : undefined;
+                  const payload = await startPdfJob(file, normalizedIsbn, {
+                    mioloOnly,
+                    testRun: true,
+                    promptOverrides: { ...prompts },
+                  });
+                  setJobId(payload.jobId);
+                  setProgressOpen(true);
+                  setStatus({
+                    status: "processing",
+                    progress: 5,
+                    message: payload.message ?? "Processamento de teste iniciado...",
+                    title: file.name.replace(/\.pdf$/i, ""),
+                  });
+                } catch (error) {
+                  setSubmitted(false);
+                  const message =
+                    error instanceof Error ? error.message : "Não foi possível iniciar o teste.";
+                  window.alert(message);
+                }
+              }}
               className={
-                running
+                submitted
                   ? "mt-6 cursor-not-allowed rounded-2xl border-2 border-black bg-zinc-400 px-10 py-4 text-xl font-bold text-zinc-800"
                   : "mt-6 rounded-2xl border-2 border-black bg-amber-400 px-10 py-4 text-xl font-bold text-black hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-50"
               }
             >
-              {running ? "Rodando teste..." : "Rodar livro com estes prompts"}
+              {submitted ? "Rodando teste..." : "Rodar livro com estes prompts"}
             </button>
-            {runError ? <p className="mt-3 text-sm text-red-700">{runError}</p> : null}
           </div>
         </div>
-
-        {result ? (
-          <div className="mt-10 border-2 border-black">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-black bg-zinc-50 px-4 py-3">
-              <div className="text-sm text-zinc-700">
-                Resultado — {result.stats?.pages ?? 0} página(s), {result.stats?.figures ?? 0} figura(s),{" "}
-                {result.stats?.described_ok ?? 0} descrição(ões) ok
-                {result.stats?.dorina_failed ? `, ${result.stats.dorina_failed} falha(s) na Dorina` : ""}
-              </div>
-              <button
-                type="button"
-                onClick={() =>
-                  downloadBlob(
-                    new Blob([JSON.stringify(result, null, 2)], { type: "application/json" }),
-                    `${resultBaseName}.json`,
-                  )
-                }
-                className="rounded-lg border-2 border-black bg-amber-400 px-4 py-2 text-sm font-semibold hover:bg-amber-300"
-              >
-                Baixar JSON
-              </button>
-            </div>
-            <pre className="max-h-[520px] overflow-auto p-4 text-xs leading-relaxed">
-              {JSON.stringify(result, null, 2)}
-            </pre>
-          </div>
-        ) : null}
       </section>
 
+      <ProgressModal
+        open={progressOpen}
+        title={status.title || file?.name || "Teste de prompts"}
+        progress={status.progress}
+        message={status.message}
+        status={status.status}
+        retrying={retrying}
+        onClose={() => {
+          setProgressOpen(false);
+          setSubmitted(false);
+        }}
+        onDownload={() => {
+          if (!jobId) return;
+          const baseName = slugify(status.title || file?.name?.replace(/\.pdf$/i, "") || "teste");
+          const link = document.createElement("a");
+          link.href = `/api/process/${jobId}/download?filename=${encodeURIComponent(baseName)}.json`;
+          link.click();
+        }}
+        onRetry={
+          jobId
+            ? async () => {
+                setRetrying(true);
+                try {
+                  const response = await fetch(`/api/process/${jobId}/retry`, { method: "POST" });
+                  const payload = (await response.json()) as ProcessStatusResponse & { error?: string };
+                  if (!response.ok) {
+                    setStatus((prev) => ({
+                      ...prev,
+                      status: "error",
+                      message: payload.error || "Não foi possível reenfileirar.",
+                    }));
+                  } else {
+                    setStatus({
+                      status: "processing",
+                      progress: payload.progress ?? 5,
+                      message: payload.message ?? "Reenfileirado...",
+                      title: status.title,
+                    });
+                  }
+                } finally {
+                  setRetrying(false);
+                }
+              }
+            : undefined
+        }
+      />
       <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </main>
   );

@@ -47,12 +47,6 @@ function isPayloadTooLargeMessage(message: string): boolean {
   );
 }
 
-function vercelBodyTooLargeError(): Error {
-  return new Error(
-    "PDF (mais os prompts editados) acima do limite de ~4,5 MB da rota /api/test-run na Vercel. Use um PDF menor.",
-  );
-}
-
 function hasPromptOverrides(options: StartPdfJobOptions): boolean {
   return Boolean(options.promptOverrides && Object.keys(options.promptOverrides).length > 0);
 }
@@ -281,60 +275,4 @@ export async function startPdfJob(
   }
 
   return uploadPdfViaBff(file, isbn, options);
-}
-
-export type PromptTestResult = {
-  stats?: { pages?: number; figures?: number; described_ok?: number; dorina_failed?: number };
-  [key: string]: unknown;
-};
-
-/** Area de testes: pipeline sincrono (/jobs/test-run) sempre via BFF, sem fila. */
-export async function runPromptTest(
-  file: File,
-  options: {
-    isbn?: string;
-    mioloOnly?: boolean;
-    promptOverrides: Record<string, string>;
-  },
-): Promise<PromptTestResult> {
-  const promptOverridesJson = JSON.stringify(options.promptOverrides);
-  if (file.size + promptOverridesJson.length > VERCEL_BFF_MAX_BYTES) {
-    throw vercelBodyTooLargeError();
-  }
-
-  const form = new FormData();
-  form.append("pdf_file", file);
-  if (options.isbn) form.append("isbn", options.isbn);
-  form.append("miolo_only", options.mioloOnly ? "true" : "false");
-  form.append("prompt_overrides", promptOverridesJson);
-
-  const response = await fetch("/api/test-run", { method: "POST", body: form });
-
-  const body = await response.text();
-  let payload: PromptTestResult & { detail?: string | { msg?: string }[]; error?: string } = {};
-  if (body.trim()) {
-    try {
-      payload = JSON.parse(body) as typeof payload;
-    } catch {
-      if (response.status === 413 || isPayloadTooLargeMessage(body)) {
-        throw vercelBodyTooLargeError();
-      }
-      throw new Error(body.slice(0, 200) || `Falha ao rodar o teste (${response.status}).`);
-    }
-  }
-
-  if (!response.ok) {
-    const detail =
-      typeof payload.detail === "string"
-        ? payload.detail
-        : Array.isArray(payload.detail)
-          ? payload.detail.map((item) => item.msg ?? "").filter(Boolean).join("; ")
-          : payload.error;
-    if (response.status === 413 || (detail && isPayloadTooLargeMessage(detail))) {
-      throw vercelBodyTooLargeError();
-    }
-    throw new Error(detail || `Falha ao rodar o teste (${response.status}).`);
-  }
-
-  return payload;
 }
