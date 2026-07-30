@@ -67,7 +67,7 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
           <div className="mb-5 rounded-lg border border-zinc-200 p-4">
             <p className="text-sm font-semibold text-zinc-900">Área de testes</p>
             <p className="mt-1 text-sm text-zinc-600">
-              Edite cópias dos prompts e rode um livro sem alterar os prompts de produção.
+              Edite cópias dos prompts e rode um livro no Supabase (sem worker AWS).
             </p>
             <Link
               href="/testes"

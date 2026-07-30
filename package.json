@@ -6,10 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "node --import tsx --test lib/prompt-router.test.ts lib/test-job-status.test.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.49.1",
     "next": "^15.3.3",
+    "pdfjs-dist": "^5.3.31",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -21,6 +24,7 @@
     "eslint": "^9.28.0",
     "eslint-config-next": "^15.3.3",
     "tailwindcss": "^3.4.14",
+    "tsx": "^4.20.3",
     "typescript": "^5.8.3"
   }
 }

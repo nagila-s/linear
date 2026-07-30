@@ -7,7 +7,11 @@ import { ProgressModal } from "@/components/ProgressModal";
 import { SettingsDrawer } from "@/components/SettingsDrawer";
 import { UploadDropzone } from "@/components/UploadDropzone";
 import { extractIsbnFromFilename, isValidIsbn, normalizeIsbn } from "@/lib/isbn";
-import { startPdfJob } from "@/lib/upload-job";
+import {
+  fetchTestJobStatus,
+  startServerlessTestJob,
+  type TestJobStatusResponse,
+} from "@/lib/test-job-client";
 import { slugify } from "@/lib/utils";
 import { buildZipStore, downloadBlob } from "@/lib/zip-download";
 import type { ProcessStatusResponse } from "@/types";
@@ -28,6 +32,8 @@ export default function TestesPage() {
     progress: 0,
     message: "Preparando processamento...",
   });
+  const [promptHash, setPromptHash] = useState("");
+  const [stats, setStats] = useState<TestJobStatusResponse["stats"]>();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [progressOpen, setProgressOpen] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -73,16 +79,22 @@ export default function TestesPage() {
   useEffect(() => {
     if (!jobId || status.status !== "processing") return;
     const poll = async () => {
-      const response = await fetch(`/api/process/${jobId}/status`);
-      if (!response.ok) return;
-      const payload = (await response.json()) as ProcessStatusResponse;
-      setStatus((prev) => ({
-        ...payload,
-        title: payload.title ?? prev.title,
-      }));
+      try {
+        const payload = await fetchTestJobStatus(jobId);
+        setStatus({
+          status: payload.status,
+          progress: payload.progress,
+          message: payload.message,
+          title: payload.title,
+        });
+        setStats(payload.stats);
+        if (payload.promptHash) setPromptHash(payload.promptHash);
+      } catch {
+        // mantém ultimo status
+      }
     };
     void poll();
-    const interval = window.setInterval(poll, 10000);
+    const interval = window.setInterval(poll, 4000);
     return () => window.clearInterval(interval);
   }, [jobId, status.status]);
 
@@ -101,9 +113,9 @@ export default function TestesPage() {
             </p>
             <h1 className="mt-2 text-3xl font-semibold text-black">Área de testes</h1>
             <p className="mt-1 max-w-2xl text-sm text-zinc-700">
-              Edite cópias dos prompts do sistema e rode um livro só com esses textos. O teste usa a
-              fila de processamento com os prompts editados aqui — nada sobrescreve os prompts de
-              produção nem altera o upload da tela principal.
+              Edite cópias dos prompts e rode um livro de até 30 páginas. O PDF é preparado no
+              navegador; a fila e as chamadas à OpenAI/Dorina ficam no Supabase — sem worker AWS e
+              sem prompts do disco de produção.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -210,8 +222,8 @@ export default function TestesPage() {
               </span>
             </label>
             <p className="mt-3 text-xs text-zinc-500">
-              O teste entra na fila de processamento e usa os prompts editados aqui. Ao final, baixe o
-              JSON para conferir o resultado.
+              O navegador renderiza as páginas e recorta as figuras; em seguida o Supabase processa
+              com o snapshot dos prompts editados. O JSON final inclui o hash desses prompts.
             </p>
             <button
               type="button"
@@ -223,26 +235,51 @@ export default function TestesPage() {
                   return;
                 }
                 setSubmitted(true);
+                setProgressOpen(true);
+                setStatus({
+                  status: "processing",
+                  progress: 3,
+                  message: "Preparando páginas e figuras no navegador...",
+                  title: file.name.replace(/\.pdf$/i, ""),
+                });
                 try {
                   const normalizedIsbn = isbn.trim() ? normalizeIsbn(isbn) : undefined;
-                  const payload = await startPdfJob(file, normalizedIsbn, {
+                  const payload = await startServerlessTestJob(file, {
+                    isbn: normalizedIsbn,
                     mioloOnly,
-                    testRun: true,
                     promptOverrides: { ...prompts },
+                    onPrepareProgress: (done, total) => {
+                      setStatus((prev) => ({
+                        ...prev,
+                        progress: Math.min(25, Math.round((done / total) * 20) + 3),
+                        message: `Renderizando página ${done}/${total}...`,
+                      }));
+                    },
+                    onUploadProgress: (done, total) => {
+                      setStatus((prev) => ({
+                        ...prev,
+                        progress: Math.min(40, 25 + Math.round((done / total) * 15)),
+                        message: `Enviando manifesto ${done}/${total}...`,
+                      }));
+                    },
                   });
                   setJobId(payload.jobId);
-                  setProgressOpen(true);
                   setStatus({
                     status: "processing",
-                    progress: 5,
-                    message: payload.message ?? "Processamento de teste iniciado...",
+                    progress: 45,
+                    message: payload.message,
                     title: file.name.replace(/\.pdf$/i, ""),
                   });
                 } catch (error) {
                   setSubmitted(false);
                   const message =
                     error instanceof Error ? error.message : "Não foi possível iniciar o teste.";
-                  window.alert(message);
+                  setStatus({
+                    status: "error",
+                    progress: 0,
+                    message,
+                    title: file.name.replace(/\.pdf$/i, ""),
+                  });
                 }
               }}
               className={
@@ -253,6 +290,20 @@ export default function TestesPage() {
             >
               {submitted ? "Rodando teste..." : "Rodar livro com estes prompts"}
             </button>
+            {promptHash ? (
+              <p className="mt-3 break-all font-mono text-xs text-zinc-500">
+                prompt_hash: {promptHash}
+              </p>
+            ) : null}
+            {stats ? (
+              <p className="mt-1 text-xs text-zinc-500">
+                {stats.processedPages}/{stats.pages} páginas · {stats.processedFigures}/{stats.figures}{" "}
+                figuras
+                {stats.failedPages || stats.failedFigures
+                  ? ` · falhas: ${stats.failedPages}p / ${stats.failedFigures}f`
+                  : ""}
+              </p>
+            ) : null}
           </div>
         </div>
       </section>
@@ -272,7 +323,7 @@ export default function TestesPage() {
           if (!jobId) return;
           const baseName = slugify(status.title || file?.name?.replace(/\.pdf$/i, "") || "teste");
           const link = document.createElement("a");
-          link.href = `/api/process/${jobId}/download?filename=${encodeURIComponent(baseName)}.json`;
+          link.href = `/api/test-jobs/${jobId}/download?filename=${encodeURIComponent(baseName)}.json`;
           link.click();
         }}
         onRetry={
@@ -280,8 +331,8 @@ export default function TestesPage() {
             ? async () => {
                 setRetrying(true);
                 try {
-                  const response = await fetch(`/api/process/${jobId}/retry`, { method: "POST" });
-                  const payload = (await response.json()) as ProcessStatusResponse & { error?: string };
+                  const response = await fetch(`/api/test-jobs/${jobId}/retry`, { method: "POST" });
+                  const payload = (await response.json()) as TestJobStatusResponse;
                   if (!response.ok) {
                     setStatus((prev) => ({
                       ...prev,

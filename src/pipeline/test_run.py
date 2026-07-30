@@ -1,9 +1,8 @@
-"""Pipeline síncrono para a área de testes de prompts.
+"""LEGADO — não usado pela área de testes.
 
-Diferente do worker de produção, este fluxo NÃO usa fila, banco (jobs/books/figures)
-nem checkpoints. Ele processa um PDF pequeno na hora, chamando OpenAI e Dorina
-diretamente, e devolve o JSON final. Serve para experimentar prompts sem afetar o
-pipeline principal nem os prompts do sistema.
+A UI em /testes agora usa fila exclusiva no Supabase (test_jobs + Edge Functions).
+Este módulo era o pipeline síncrono na FastAPI (/jobs/test-run). Mantido apenas
+para referência; não deve ser chamado pelo frontend.
 """
 
 from __future__ import annotations

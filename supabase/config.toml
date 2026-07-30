@@ -1,0 +1,2 @@
+[functions.test-run-dispatch]
+verify_jwt = false

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "node:crypto";
 import { SESSION_COOKIE_NAME } from "@/lib/auth";
+import { createSignedSessionToken } from "@/lib/session";
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const { password } = (await request.json()) as { password?: string };
@@ -20,7 +20,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Senha invalida." }, { status: 401 });
   }
 
-  const token = crypto.randomBytes(24).toString("hex");
+  let token: string;
+  try {
+    token = await createSignedSessionToken("linear-user");
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Falha ao criar sessao." },
+      { status: 500 },
+    );
+  }
+
   const response = NextResponse.json({ token });
   response.cookies.set({
     name: SESSION_COOKIE_NAME,
