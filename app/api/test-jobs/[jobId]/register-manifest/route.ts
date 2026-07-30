@@ -38,7 +38,12 @@ export async function POST(request: NextRequest, context: RouteContext): Promise
     if (!job) return jsonError("Job nao encontrado.", 404);
     if (job.status !== "uploading") return jsonError("Job nao esta em upload.", 409);
 
-    const pageRows = body.pages.map((page) => ({
+    // Um upsert nao aceita duas linhas com a mesma chave de conflito no mesmo lote.
+    const pagesByNumber = new Map<number, ManifestPage>();
+    for (const page of body.pages) pagesByNumber.set(page.page_number, page);
+    const uniquePages = [...pagesByNumber.values()].sort((a, b) => a.page_number - b.page_number);
+
+    const pageRows = uniquePages.map((page) => ({
       job_id: jobId,
       page_number: page.page_number,
       status: "pending",
@@ -56,12 +61,13 @@ export async function POST(request: NextRequest, context: RouteContext): Promise
     }
 
     const pageIdByNumber = new Map(insertedPages.map((row) => [row.page_number, row.id]));
-    const figureRows: Array<Record<string, unknown>> = [];
-    for (const page of body.pages) {
+    // figure_key é sequencial por página (fig1, fig2...), entao a chave real é page_id + figure_key.
+    const figuresByKey = new Map<string, Record<string, unknown>>();
+    for (const page of uniquePages) {
       const pageId = pageIdByNumber.get(page.page_number);
       if (!pageId) continue;
       for (const figure of page.figures ?? []) {
-        figureRows.push({
+        figuresByKey.set(`${pageId}::${figure.figure_key}`, {
           job_id: jobId,
           page_id: pageId,
           page_number: page.page_number,
@@ -75,24 +81,25 @@ export async function POST(request: NextRequest, context: RouteContext): Promise
         });
       }
     }
+    const figureRows = [...figuresByKey.values()];
 
     if (figureRows.length) {
       const { error: figuresError } = await supabase
         .from("test_figures")
-        .upsert(figureRows, { onConflict: "job_id,figure_key" });
+        .upsert(figureRows, { onConflict: "page_id,figure_key" });
       if (figuresError) return jsonError(figuresError.message, 500);
     }
 
     const { error: updateError } = await supabase
       .from("test_jobs")
       .update({
-        total_pages: body.pages.length,
+        total_pages: uniquePages.length,
         total_figures: figureRows.length,
       })
       .eq("id", jobId);
     if (updateError) return jsonError(updateError.message, 500);
 
-    return NextResponse.json({ ok: true, pages: body.pages.length, figures: figureRows.length });
+    return NextResponse.json({ ok: true, pages: uniquePages.length, figures: figureRows.length });
   } catch (error) {
     return jsonError(error instanceof Error ? error.message : "Falha ao registrar manifesto.", 500);
   }
