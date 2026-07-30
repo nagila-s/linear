@@ -47,18 +47,9 @@ function isPayloadTooLargeMessage(message: string): boolean {
   );
 }
 
-function canCallPublicApiFromBrowser(): boolean {
-  const base = getPublicApiBase();
-  if (!base) return false;
-  if (typeof window !== "undefined" && window.location.protocol === "https:" && base.startsWith("http://")) {
-    return false;
-  }
-  return true;
-}
-
 function vercelBodyTooLargeError(): Error {
   return new Error(
-    "PDF (e prompts) acima do limite de ~4,5 MB da Vercel. Use um PDF menor ou configure NEXT_PUBLIC_FASTAPI_URL com HTTPS.",
+    "PDF (mais os prompts editados) acima do limite de ~4,5 MB da rota /api/test-run na Vercel. Use um PDF menor.",
   );
 }
 
@@ -297,7 +288,7 @@ export type PromptTestResult = {
   [key: string]: unknown;
 };
 
-/** Area de testes: pipeline sincrono (/jobs/test-run), sem fila. */
+/** Area de testes: pipeline sincrono (/jobs/test-run) sempre via BFF, sem fila. */
 export async function runPromptTest(
   file: File,
   options: {
@@ -307,10 +298,7 @@ export async function runPromptTest(
   },
 ): Promise<PromptTestResult> {
   const promptOverridesJson = JSON.stringify(options.promptOverrides);
-  const estimatedBytes = file.size + promptOverridesJson.length;
-  const useDirect = canCallPublicApiFromBrowser();
-
-  if (!useDirect && estimatedBytes > VERCEL_BFF_MAX_BYTES) {
+  if (file.size + promptOverridesJson.length > VERCEL_BFF_MAX_BYTES) {
     throw vercelBodyTooLargeError();
   }
 
@@ -320,23 +308,7 @@ export async function runPromptTest(
   form.append("miolo_only", options.mioloOnly ? "true" : "false");
   form.append("prompt_overrides", promptOverridesJson);
 
-  let response: Response;
-  if (useDirect) {
-    const base = getPublicApiBase();
-    if (!base) throw new Error("NEXT_PUBLIC_FASTAPI_URL nao configurada.");
-    try {
-      response = await fetch(`${base}${apiPrefix()}/jobs/test-run`, {
-        method: "POST",
-        body: form,
-      });
-    } catch {
-      throw new Error(
-        "Nao foi possivel enviar o PDF para a API. Confira NEXT_PUBLIC_FASTAPI_URL e se a API esta no ar.",
-      );
-    }
-  } else {
-    response = await fetch("/api/test-run", { method: "POST", body: form });
-  }
+  const response = await fetch("/api/test-run", { method: "POST", body: form });
 
   const body = await response.text();
   let payload: PromptTestResult & { detail?: string | { msg?: string }[]; error?: string } = {};
