@@ -9,6 +9,7 @@ import { UploadDropzone } from "@/components/UploadDropzone";
 import { extractIsbnFromFilename, isValidIsbn, normalizeIsbn } from "@/lib/isbn";
 import {
   fetchTestJobStatus,
+  pumpTestJob,
   startServerlessTestJob,
   type TestJobStatusResponse,
 } from "@/lib/test-job-client";
@@ -78,24 +79,44 @@ export default function TestesPage() {
 
   useEffect(() => {
     if (!jobId || status.status !== "processing") return;
-    const poll = async () => {
-      try {
-        const payload = await fetchTestJobStatus(jobId);
-        setStatus({
-          status: payload.status,
-          progress: payload.progress,
-          message: payload.message,
-          title: payload.title,
-        });
-        setStats(payload.stats);
-        if (payload.promptHash) setPromptHash(payload.promptHash);
-      } catch {
-        // mantém ultimo status
+    let cancelled = false;
+
+    // O navegador consulta o status e empurra a fila no mesmo laço: sem isso o job
+    // fica parado esperando alguém invocar a Edge Function.
+    const run = async () => {
+      while (!cancelled) {
+        let stillProcessing = true;
+        try {
+          const payload = await fetchTestJobStatus(jobId);
+          if (cancelled) return;
+          setStatus({
+            status: payload.status,
+            progress: payload.progress,
+            message: payload.message,
+            title: payload.title,
+          });
+          setStats(payload.stats);
+          if (payload.promptHash) setPromptHash(payload.promptHash);
+          stillProcessing = payload.status === "processing";
+        } catch {
+          // mantém ultimo status
+        }
+        if (!stillProcessing || cancelled) return;
+
+        try {
+          await pumpTestJob(jobId);
+        } catch {
+          // proximo ciclo tenta de novo
+        }
+        if (cancelled) return;
+        await new Promise((resolve) => window.setTimeout(resolve, 2000));
       }
     };
-    void poll();
-    const interval = window.setInterval(poll, 4000);
-    return () => window.clearInterval(interval);
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
   }, [jobId, status.status]);
 
   const canSubmit = Boolean(file && !submitted && names.length > 0);

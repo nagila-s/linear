@@ -38,23 +38,35 @@ Deno.serve(async (req) => {
     }
 
     const supabase = getServiceClient();
-    const rows = await readQueue(supabase, 180, 5);
     const results: Array<Record<string, unknown>> = [];
+    const startedAt = Date.now();
+    // Drena a fila enquanto sobrar tempo de execucao, em vez de um unico lote:
+    // uma invocacao por lote deixaria o job parado esperando o proximo disparo.
+    const budgetMs = 100_000;
+    let drained = false;
 
-    for (const row of rows) {
-      try {
-        await processMessage(supabase, row);
-        await archiveMessage(supabase, row.msg_id);
-        results.push({ msg_id: row.msg_id, ok: true, kind: row.message?.kind });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        results.push({ msg_id: row.msg_id, ok: false, error: message });
-        // Visibility timeout reentrega automaticamente; se estourou tentativas, marca falha.
-        await handleFailure(supabase, row, message);
+    while (Date.now() - startedAt < budgetMs) {
+      const rows = await readQueue(supabase, 180, 5);
+      if (!rows.length) {
+        drained = true;
+        break;
+      }
+
+      for (const row of rows) {
+        try {
+          await processMessage(supabase, row);
+          await archiveMessage(supabase, row.msg_id);
+          results.push({ msg_id: row.msg_id, ok: true, kind: row.message?.kind });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          results.push({ msg_id: row.msg_id, ok: false, error: message });
+          // Visibility timeout reentrega automaticamente; se estourou tentativas, marca falha.
+          await handleFailure(supabase, row, message);
+        }
       }
     }
 
-    return Response.json({ processed: results.length, results });
+    return Response.json({ processed: results.length, drained, results });
   } catch (error) {
     return Response.json(
       { error: error instanceof Error ? error.message : String(error) },

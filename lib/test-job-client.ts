@@ -217,3 +217,17 @@ export async function fetchTestJobStatus(jobId: string): Promise<TestJobStatusRe
   }
   return payload;
 }
+
+/** Avanca a fila do job. Chamado em loop pelo navegador enquanto o teste roda. */
+export async function pumpTestJob(jobId: string): Promise<{ processed: number; drained: boolean }> {
+  const response = await fetch(`/api/test-jobs/${jobId}/pump`, { method: "POST" });
+  const payload = (await response.json()) as {
+    processed?: number;
+    drained?: boolean;
+    error?: string;
+  };
+  if (!response.ok) {
+    throw new Error(payload.error || "Falha ao avancar a fila do teste.");
+  }
+  return { processed: payload.processed ?? 0, drained: Boolean(payload.drained) };
+}

@@ -23,20 +23,8 @@ export async function POST(_request: NextRequest, context: RouteContext): Promis
     const { error } = await supabase.rpc("test_enqueue_job", { p_job_id: jobId });
     if (error) return jsonError(error.message, 500);
 
-    // Disparo imediato (além do cron) — best effort.
-    const functionsUrl = process.env.SUPABASE_URL?.replace(/\/+$/, "");
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (functionsUrl && key) {
-      void fetch(`${functionsUrl}/functions/v1/test-run-dispatch`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${key}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ job_id: jobId }),
-      }).catch(() => undefined);
-    }
-
+    // O consumo da fila fica com /pump, chamado em laço pelo navegador: um disparo
+    // "best effort" aqui esconderia falhas da Edge Function.
     return NextResponse.json({
       ok: true,
       message: "Teste enfileirado no Supabase. Os prompts editados serao usados na OpenAI/Dorina.",
