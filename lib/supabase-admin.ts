@@ -2,13 +2,58 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 let cached: SupabaseClient | null = null;
 
+/** Painéis costumam guardar o valor com aspas ou barra final; normaliza antes de validar. */
+function cleanEnvValue(raw: string | undefined): string {
+  let value = (raw ?? "").trim();
+  if (value.length >= 2) {
+    const first = value[0];
+    const last = value[value.length - 1];
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+      value = value.slice(1, -1).trim();
+    }
+  }
+  return value;
+}
+
+export function describeSupabaseUrl(raw: string | undefined): {
+  ok: boolean;
+  reason?: string;
+  host?: string;
+} {
+  const value = cleanEnvValue(raw);
+  if (!value) return { ok: false, reason: "vazia" };
+  if (!/^https?:\/\//i.test(value)) {
+    return { ok: false, reason: "sem esquema http:// ou https:// no inicio" };
+  }
+  if (/\s/.test(value)) return { ok: false, reason: "contem espaco ou quebra de linha" };
+  try {
+    const parsed = new URL(value);
+    return { ok: true, host: parsed.host };
+  } catch {
+    return { ok: false, reason: "nao e uma URL valida" };
+  }
+}
+
 export function getSupabaseAdmin(): SupabaseClient {
   if (cached) return cached;
-  const url = process.env.SUPABASE_URL?.trim();
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+
+  const url = cleanEnvValue(process.env.SUPABASE_URL).replace(/\/+$/, "");
+  const key = cleanEnvValue(process.env.SUPABASE_SERVICE_ROLE_KEY);
+
   if (!url || !key) {
-    throw new Error("SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY sao obrigatorias para a area de testes.");
+    throw new Error(
+      "SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY sao obrigatorias para a area de testes.",
+    );
   }
+
+  const check = describeSupabaseUrl(url);
+  if (!check.ok) {
+    throw new Error(
+      `SUPABASE_URL invalida (${check.reason}). Esperado algo como https://<ref>.supabase.co — ` +
+        `valor recebido tem ${url.length} caractere(s) e comeca com "${url.slice(0, 12)}".`,
+    );
+  }
+
   cached = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
