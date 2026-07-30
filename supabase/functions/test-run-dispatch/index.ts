@@ -31,10 +31,46 @@ const LINEARIZATION_SCHEMA = {
   },
 };
 
+/** Limite de reinvocacoes encadeadas, para uma fila envenenada nao rodar para sempre. */
+const MAX_CHAIN_DEPTH = 60;
+
+/**
+ * Reinvoca a propria funcao quando a fila nao terminou, para o job seguir andando
+ * mesmo que ninguem esteja com a area de testes aberta no navegador.
+ */
+function chainNextRun(depth: number): void {
+  const baseUrl = Deno.env.get("SUPABASE_URL");
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!baseUrl || !key || depth >= MAX_CHAIN_DEPTH) return;
+
+  const pending = fetch(`${baseUrl}/functions/v1/test-run-dispatch`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ depth: depth + 1 }),
+  }).catch(() => undefined);
+
+  const runtime = (globalThis as { EdgeRuntime?: { waitUntil: (p: Promise<unknown>) => void } })
+    .EdgeRuntime;
+  if (runtime?.waitUntil) {
+    runtime.waitUntil(pending);
+  }
+}
+
 Deno.serve(async (req) => {
   try {
     if (req.method !== "POST") {
       return new Response("Method not allowed", { status: 405 });
+    }
+
+    let depth = 0;
+    try {
+      const body = (await req.json()) as { depth?: number } | null;
+      if (body && typeof body.depth === "number") depth = body.depth;
+    } catch {
+      // corpo vazio ou invalido: trata como primeira invocacao
     }
 
     const supabase = getServiceClient();
@@ -66,7 +102,11 @@ Deno.serve(async (req) => {
       }
     }
 
-    return Response.json({ processed: results.length, drained, results });
+    if (!drained && results.length) {
+      chainNextRun(depth);
+    }
+
+    return Response.json({ processed: results.length, drained, depth, results });
   } catch (error) {
     return Response.json(
       { error: error instanceof Error ? error.message : String(error) },
