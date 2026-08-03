@@ -55,6 +55,27 @@ type PreparedPage = {
   }>;
 };
 
+/** Evita o erro opaco "Unexpected end of JSON input" quando a Vercel devolve corpo vazio. */
+async function readJsonResponse<T extends { error?: string }>(
+  response: Response,
+  context: string,
+): Promise<T> {
+  const raw = await response.text();
+  if (!raw.trim()) {
+    throw new Error(
+      `${context}: resposta vazia (HTTP ${response.status}). ` +
+        "Costuma ser timeout ou queda da rota na Vercel — tente de novo.",
+    );
+  }
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    throw new Error(
+      `${context}: resposta nao-JSON (HTTP ${response.status}): ${raw.slice(0, 200)}`,
+    );
+  }
+}
+
 async function putBlob(signedUrl: string, blob: Blob, contentType: string): Promise<void> {
   const response = await fetch(signedUrl, {
     method: "PUT",
@@ -98,7 +119,10 @@ export async function startServerlessTestJob(
       prompt_overrides: options.promptOverrides,
     }),
   });
-  const createPayload = (await createResponse.json()) as CreateJobResponse;
+  const createPayload = await readJsonResponse<CreateJobResponse>(
+    createResponse,
+    "Criar job",
+  );
   if (!createResponse.ok || !createPayload.jobId) {
     throw new Error(createPayload.error || "Falha ao criar job de teste.");
   }
@@ -107,7 +131,10 @@ export async function startServerlessTestJob(
   try {
     await uploadManifest(jobId, file, pages, options.onUploadProgress);
     const enqueueResponse = await fetch(`/api/test-jobs/${jobId}/enqueue`, { method: "POST" });
-    const enqueuePayload = (await enqueueResponse.json()) as { error?: string; message?: string };
+    const enqueuePayload = await readJsonResponse<{ error?: string; message?: string }>(
+      enqueueResponse,
+      "Enfileirar job",
+    );
     if (!enqueueResponse.ok) {
       throw new Error(enqueuePayload.error || "Falha ao enfileirar job de teste.");
     }
@@ -168,18 +195,28 @@ async function uploadManifest(
       paths: assets.map((asset) => ({ path: asset.path, contentType: asset.contentType })),
     }),
   });
-  const signPayload = (await signResponse.json()) as { uploads?: SignedUpload[]; error?: string };
+  const signPayload = await readJsonResponse<{ uploads?: SignedUpload[]; error?: string }>(
+    signResponse,
+    "Assinar uploads",
+  );
   if (!signResponse.ok || !signPayload.uploads) {
     throw new Error(signPayload.error || "Falha ao assinar uploads.");
   }
   const byPath = new Map(signPayload.uploads.map((item) => [item.path, item]));
 
   let done = 0;
-  for (const asset of assets) {
-    const signed = byPath.get(asset.path);
-    if (!signed) throw new Error(`URL assinada ausente para ${asset.path}`);
-    await putBlob(signed.signedUrl, asset.blob, asset.contentType);
-    done += 1;
+  // Upload em paralelo limitado — sequencial estourava facilmente o tempo da aba.
+  const concurrency = 4;
+  for (let i = 0; i < assets.length; i += concurrency) {
+    const batch = assets.slice(i, i + concurrency);
+    await Promise.all(
+      batch.map(async (asset) => {
+        const signed = byPath.get(asset.path);
+        if (!signed) throw new Error(`URL assinada ausente para ${asset.path}`);
+        await putBlob(signed.signedUrl, asset.blob, asset.contentType);
+      }),
+    );
+    done += batch.length;
     onUploadProgress?.(done, assets.length);
   }
 
@@ -203,7 +240,10 @@ async function uploadManifest(
       })),
     }),
   });
-  const registerPayload = (await registerResponse.json()) as { error?: string };
+  const registerPayload = await readJsonResponse<{ error?: string }>(
+    registerResponse,
+    "Registrar manifesto",
+  );
   if (!registerResponse.ok) {
     throw new Error(registerPayload.error || "Falha ao registrar manifesto.");
   }
@@ -211,7 +251,7 @@ async function uploadManifest(
 
 export async function fetchTestJobStatus(jobId: string): Promise<TestJobStatusResponse> {
   const response = await fetch(`/api/test-jobs/${jobId}/status`);
-  const payload = (await response.json()) as TestJobStatusResponse;
+  const payload = await readJsonResponse<TestJobStatusResponse>(response, "Status do teste");
   if (!response.ok) {
     throw new Error(payload.error || "Falha ao consultar status do teste.");
   }
@@ -221,11 +261,11 @@ export async function fetchTestJobStatus(jobId: string): Promise<TestJobStatusRe
 /** Avanca a fila do job. Chamado em loop pelo navegador enquanto o teste roda. */
 export async function pumpTestJob(jobId: string): Promise<{ processed: number; drained: boolean }> {
   const response = await fetch(`/api/test-jobs/${jobId}/pump`, { method: "POST" });
-  const payload = (await response.json()) as {
+  const payload = await readJsonResponse<{
     processed?: number;
     drained?: boolean;
     error?: string;
-  };
+  }>(response, "Avancar fila");
   if (!response.ok) {
     throw new Error(payload.error || "Falha ao avancar a fila do teste.");
   }

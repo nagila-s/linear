@@ -353,7 +353,25 @@ export default function TestesPage() {
                 setRetrying(true);
                 try {
                   const response = await fetch(`/api/test-jobs/${jobId}/retry`, { method: "POST" });
-                  const payload = (await response.json()) as TestJobStatusResponse;
+                  const raw = await response.text();
+                  let payload: TestJobStatusResponse = {
+                    jobId,
+                    status: "error",
+                    progress: 0,
+                    message: "Resposta vazia ao reenfileirar.",
+                  };
+                  if (raw.trim()) {
+                    try {
+                      payload = JSON.parse(raw) as TestJobStatusResponse;
+                    } catch {
+                      setStatus((prev) => ({
+                        ...prev,
+                        status: "error",
+                        message: `Resposta invalida ao reenfileirar (HTTP ${response.status}).`,
+                      }));
+                      return;
+                    }
+                  }
                   if (!response.ok) {
                     setStatus((prev) => ({
                       ...prev,

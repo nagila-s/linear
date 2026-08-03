@@ -23,32 +23,20 @@ export async function POST(_request: NextRequest, context: RouteContext): Promis
     const { error } = await supabase.rpc("test_enqueue_job", { p_job_id: jobId });
     if (error) return jsonError(error.message, 500);
 
-    // Primeira partida: a Edge Function se reinvoca ate esvaziar a fila, entao o job
-    // anda mesmo se o navegador for fechado. Esperamos pouco de proposito — o que
-    // importa aqui e detectar falha de invocacao (404/401), nao o fim do processamento.
+    // Disparo em background: a Edge Function se reinvoca ate esvaziar a fila.
+    // Nao esperamos a resposta — esperar aqui estourava o limite da Vercel e
+    // devolvia corpo vazio ao navegador ("Unexpected end of JSON input").
     const baseUrl = process.env.SUPABASE_URL?.trim().replace(/\/+$/, "");
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
     if (baseUrl && key) {
-      try {
-        const kick = await fetch(`${baseUrl}/functions/v1/test-run-dispatch`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${key}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ depth: 0 }),
-          signal: AbortSignal.timeout(3_000),
-        });
-        if (!kick.ok) {
-          const detail = await kick.text();
-          return jsonError(
-            `Fila criada, mas a Edge Function test-run-dispatch respondeu ${kick.status}: ${detail.slice(0, 200)}`,
-            502,
-          );
-        }
-      } catch {
-        // Timeout aqui e o caso normal: a funcao ficou processando.
-      }
+      void fetch(`${baseUrl}/functions/v1/test-run-dispatch`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${key}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ depth: 0 }),
+      }).catch(() => undefined);
     }
 
     return NextResponse.json({
