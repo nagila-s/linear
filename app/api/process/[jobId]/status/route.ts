@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  extractFastApiError,
   fetchFastApi,
   jsonError,
   mapJobToProcessStatus,
+  readFastApiJson,
   type FastApiJob,
 } from "@/app/api/_utils/fastapi";
 
@@ -15,10 +17,13 @@ export async function GET(
 
   try {
     const response = await fetchFastApi(`/jobs/${jobId}`, { method: "GET" });
-    const payload = (await response.json()) as FastApiJob & { detail?: string };
+    const payload = (await readFastApiJson(response)) as FastApiJob & { detail?: string };
 
     if (!response.ok) {
-      return jsonError(payload.detail ?? "Falha ao consultar status.", response.status);
+      return jsonError(
+        extractFastApiError(payload, "Falha ao consultar status."),
+        response.status,
+      );
     }
 
     const mapped = mapJobToProcessStatus(payload);
@@ -28,7 +33,7 @@ export async function GET(
     });
   } catch {
     return jsonError(
-      "API FastAPI indisponível. Execute `python run_api.py` neste repositório.",
+      "API FastAPI indisponível. Verifique FASTAPI_URL na Vercel e se o backend está no ar.",
       503,
     );
   }

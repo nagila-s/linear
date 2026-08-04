@@ -119,13 +119,18 @@ export default function HomePage() {
     if (!jobId || status.status !== "processing") return;
 
     const poll = async () => {
-      const response = await fetch(`/api/process/${jobId}/status`);
-      if (!response.ok) return;
-      const payload = (await response.json()) as ProcessStatusResponse;
-      setStatus((prev) => ({
-        ...payload,
-        title: payload.title ?? prev.title,
-      }));
+      try {
+        const response = await fetch(`/api/process/${jobId}/status`);
+        const raw = await response.text();
+        if (!response.ok || !raw.trim()) return;
+        const payload = JSON.parse(raw) as ProcessStatusResponse;
+        setStatus((prev) => ({
+          ...payload,
+          title: payload.title ?? prev.title,
+        }));
+      } catch {
+        // Mantem o ultimo status se a consulta falhar pontualmente.
+      }
     };
 
     void poll();

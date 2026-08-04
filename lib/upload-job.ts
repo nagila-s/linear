@@ -72,6 +72,26 @@ async function readApiJson(response: Response): Promise<{
   throw new Error(body.slice(0, 200) || `Falha na API (${response.status}).`);
 }
 
+async function readBrowserJson<T extends { error?: string }>(
+  response: Response,
+  context: string,
+): Promise<T> {
+  const raw = await response.text();
+  if (!raw.trim()) {
+    throw new Error(
+      `${context}: resposta vazia (HTTP ${response.status}). ` +
+        "Verifique FASTAPI_URL / NEXT_PUBLIC_FASTAPI_URL na Vercel.",
+    );
+  }
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    throw new Error(
+      `${context}: resposta nao-JSON (HTTP ${response.status}): ${raw.slice(0, 200)}`,
+    );
+  }
+}
+
 export async function uploadPdfViaPresigned(
   file: File,
   isbn?: string,
@@ -84,7 +104,10 @@ export async function uploadPdfViaPresigned(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ isbn, filename: file.name, miolo_only: mioloOnly }),
   });
-  const initPayload = (await initResponse.json()) as UploadInitPayload & { error?: string };
+  const initPayload = await readBrowserJson<UploadInitPayload & { error?: string }>(
+    initResponse,
+    "Preparar upload",
+  );
   if (!initResponse.ok) {
     throw new Error(initPayload.error ?? `Falha ao preparar upload do PDF (${initResponse.status}).`);
   }
@@ -128,18 +151,11 @@ export async function uploadPdfViaPresigned(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(completeBody),
   });
-  let completePayload: { jobId?: string; message?: string; error?: string };
-  try {
-    completePayload = (await completeResponse.json()) as {
-      jobId?: string;
-      message?: string;
-      error?: string;
-    };
-  } catch {
-    throw new Error(
-      `Falha ao enfileirar processamento (${completeResponse.status}). A API pode estar indisponivel.`,
-    );
-  }
+  const completePayload = await readBrowserJson<{
+    jobId?: string;
+    message?: string;
+    error?: string;
+  }>(completeResponse, "Enfileirar processamento");
   if (!completeResponse.ok || !completePayload.jobId) {
     throw new Error(
       completePayload.error ??
@@ -228,11 +244,11 @@ export async function uploadPdfViaBff(
   }
 
   const response = await fetch("/api/process", { method: "POST", body: formData });
-  const payload = (await response.json()) as {
+  const payload = await readBrowserJson<{
     jobId?: string;
     message?: string;
     error?: string;
-  };
+  }>(response, "Iniciar processamento");
 
   if (!response.ok || !payload.jobId) {
     throw new Error(payload.error ?? "Nao foi possivel iniciar o processamento.");

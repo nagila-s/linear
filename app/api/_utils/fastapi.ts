@@ -164,7 +164,7 @@ export function mapJobToProcessStatus(job: FastApiJob): {
   }
 
   if (raw === "failed") {
-    const detail = (job.error_message || job.erro || "").trim();
+    const detail = humanizeWorkerError(job.error_message || job.erro || "");
     return {
       status: "error",
       progress: 0,
@@ -179,4 +179,20 @@ export function mapJobToProcessStatus(job: FastApiJob): {
     message: mapStageMessage(job.etapa_atual, raw),
     title: job.metadata?.title,
   };
+}
+
+/** Erros crus do Python (json.loads em corpo vazio) nao ajudam na UI. */
+function humanizeWorkerError(raw: string): string {
+  const detail = raw.trim();
+  if (!detail) return "";
+  if (/expecting value:\s*line 1 column 1/i.test(detail) || detail === "Expecting value: line 1 column 1 (char 0)") {
+    return (
+      "O worker recebeu resposta vazia ao ler JSON (OpenAI/Dorina/storage). " +
+      "Nao e falha do upload na tela principal — tente de novo; se persistir, confira as chaves e logs do worker na AWS."
+    );
+  }
+  if (/json\.decoder\.JSONDecodeError/i.test(detail)) {
+    return `Falha ao interpretar JSON no worker: ${detail.slice(0, 240)}`;
+  }
+  return detail;
 }
