@@ -39,6 +39,22 @@ def _pdf_page_count(pdf_bytes: bytes) -> int:
     return pages
 
 
+def count_pdf_pages(pdf_bytes: bytes) -> int:
+    """Contagem leve de paginas (PyMuPDF), com fallback Poppler."""
+    try:
+        import fitz  # PyMuPDF
+
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        try:
+            pages = int(doc.page_count)
+        finally:
+            doc.close()
+        if pages > 0:
+            return pages
+    except Exception:  # noqa: BLE001
+        logger.debug("PyMuPDF falhou na contagem de paginas; tentando Poppler.", exc_info=True)
+    return _pdf_page_count(pdf_bytes)
+
 def preprocess_pdf(
     pdf_bytes: bytes,
     dpi: int = 150,

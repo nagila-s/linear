@@ -56,6 +56,32 @@ class BookListResponse(BaseModel):
     books: List[BookListItem] = Field(default_factory=list)
 
 
+class QueueItem(BaseModel):
+    id: str
+    title: str
+    isbn: str = ""
+    status: str
+    stage: str = ""
+    message: str = ""
+    pageCount: Optional[int] = None
+    createdAt: str = ""
+    startedAt: Optional[str] = None
+    finishedAt: Optional[str] = None
+    estimatedDurationSeconds: Optional[int] = None
+    estimatedStartAt: Optional[str] = None
+    estimatedEndAt: Optional[str] = None
+    queuePosition: Optional[int] = None
+    canDownload: bool = False
+    errorMessage: Optional[str] = None
+
+
+class QueueResponse(BaseModel):
+    tab: str
+    items: List[QueueItem] = Field(default_factory=list)
+    secondsPerPage: int = 25
+    calibrationNote: str = "Estimativa com base em testes anteriores: 25 s por página."
+
+
 class UploadInitRequest(BaseModel):
     isbn: Optional[str] = None
     filename: str = Field(min_length=1, max_length=512)
@@ -87,6 +113,7 @@ class UploadCompleteRequest(BaseModel):
     miolo_only: bool = False
     test_run: bool = False
     prompt_overrides: Optional[Dict[str, str]] = None
+    page_count: Optional[int] = Field(default=None, ge=1, le=5000)
 
 
 class FigureContext(BaseModel):

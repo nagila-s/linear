@@ -138,6 +138,21 @@ export default function HomePage() {
     return () => window.clearInterval(interval);
   }, [jobId, status.status]);
 
+  const resetForAnotherUpload = () => {
+    setProgressOpen(false);
+    setSubmitted(false);
+    setFile(null);
+    setIsbn("");
+    setLookup({ loading: false, data: null });
+    setJobId(null);
+    setStatus({
+      status: "processing",
+      progress: 0,
+      message: "Preparando processamento...",
+    });
+    setLiveMessage("Pronto para enviar outro livro.");
+  };
+
   return (
     <main className="min-h-screen bg-white">
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
@@ -275,9 +290,10 @@ export default function HomePage() {
                   setStatus({
                     status: "processing",
                     progress: 5,
-                    message: payload.message ?? "Processamento iniciado...",
+                    message: "Livro enviado. Aguardando na fila...",
                     title: lookup.data?.title ?? file.name.replace(/\.pdf$/i, ""),
                   });
+                  setLiveMessage("Livro enviado para a fila de processamento.");
                 } catch (error) {
                   setSubmitted(false);
                   const message =
@@ -305,7 +321,12 @@ export default function HomePage() {
         message={status.message}
         status={status.status}
         retrying={retrying}
-        onClose={() => setProgressOpen(false)}
+        queueHref="/fila"
+        onSendAnother={resetForAnotherUpload}
+        onClose={() => {
+          setProgressOpen(false);
+          setSubmitted(false);
+        }}
         onRetry={
           jobId
             ? async () => {

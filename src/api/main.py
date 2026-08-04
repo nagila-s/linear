@@ -10,15 +10,21 @@ from src.core.config import get_settings
 from src.core.errors import AppError, ValidationError
 from src.core.logging import configure_logging
 from src.models.enums import JobStatus, JobType
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+
 from src.models.schemas import (
     BookListItem,
     BookListResponse,
     HealthResponse,
     JobResponse,
+    QueueItem,
+    QueueResponse,
     UploadCompleteRequest,
     UploadInitRequest,
     UploadInitResponse,
 )
+from src.pipeline.steps.preprocess import count_pdf_pages
 from src.repositories.artifacts import ArtifactsRepository
 from src.repositories.books import BooksRepository
 from src.repositories.jobs import JobsRepository
@@ -30,6 +36,10 @@ from src.services.storage import StorageService
 load_dotenv()
 configure_logging()
 logger = logging.getLogger(__name__)
+
+# Estimativa com base em testes anteriores.
+SECONDS_PER_PAGE = 25
+QUEUE_CALIBRATION_NOTE = "Estimativa com base em testes anteriores: 25 s por página."
 
 settings = get_settings()
 app = FastAPI(title=settings.app_name, version="0.1.0")
@@ -63,6 +73,7 @@ def _create_linearize_job(
     miolo_only: bool = False,
     test_run: bool = False,
     prompt_overrides: dict[str, str] | None = None,
+    page_count: int | None = None,
 ) -> JobResponse:
     process_version = _process_version()
     overrides = sanitize_prompt_overrides(prompt_overrides)
@@ -84,6 +95,8 @@ def _create_linearize_job(
         "pdf_render_dpi": settings.pdf_render_dpi,
         "pdf_storage_path": storage_path_pdf,
     }
+    if page_count and page_count > 0:
+        job_metadata["page_count"] = int(page_count)
     if is_test:
         job_metadata["test_run"] = True
     if overrides:
@@ -95,6 +108,155 @@ def _create_linearize_job(
         metadata=job_metadata,
     )
     return JobResponse.model_validate(created)
+
+
+def _iso(value: Optional[datetime]) -> Optional[str]:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.isoformat()
+
+
+def _queue_message(status: str, stage: str, error: str | None = None) -> str:
+    normalized = (status or "").lower()
+    if normalized == JobStatus.QUEUED.value:
+        return "Na fila, aguardando a vez."
+    if normalized == JobStatus.RETRYING.value:
+        return "Reprocessando após falha temporária."
+    if normalized == JobStatus.RUNNING.value:
+        stage_map = {
+            "preprocess": "Preparando páginas do PDF...",
+            "pages": "Preparando páginas do PDF...",
+            "extract": "Extraindo figuras...",
+            "linearize": "Linearizando com IA...",
+            "describe": "Descrevendo figuras (Dorina)...",
+            "assemble": "Montando o JSON final...",
+        }
+        return stage_map.get((stage or "").lower(), "Processando...")
+    if normalized == JobStatus.DONE.value:
+        return "Concluído."
+    if normalized == JobStatus.PARTIAL_SUCCESS.value:
+        return "Concluído com avisos."
+    if normalized == JobStatus.FAILED.value:
+        detail = (error or "").strip()
+        return f"Falhou: {detail[:180]}" if detail else "Falhou."
+    return status or "—"
+
+
+def _estimate_open_queue(rows: list[dict]) -> list[QueueItem]:
+    now = datetime.now(timezone.utc)
+    cursor = now
+    items: list[QueueItem] = []
+    eta_blocked = False
+
+    for index, row in enumerate(rows, start=1):
+        metadata = row.get("metadata") or {}
+        if not isinstance(metadata, dict):
+            metadata = {}
+        page_count_raw = metadata.get("page_count")
+        try:
+            page_count = int(page_count_raw) if page_count_raw is not None else None
+        except (TypeError, ValueError):
+            page_count = None
+        if page_count is not None and page_count <= 0:
+            page_count = None
+
+        title = (
+            str(row.get("titulo") or "").strip()
+            or str(metadata.get("filename") or metadata.get("title") or "").strip()
+            or str(row.get("isbn") or "Livro")
+        )
+        status = str(row.get("status") or "")
+        stage = str(row.get("etapa_atual") or "")
+        started_at = row.get("started_at")
+        duration = page_count * SECONDS_PER_PAGE if page_count else None
+
+        estimated_start: datetime | None = None
+        estimated_end: datetime | None = None
+
+        if duration is None:
+            eta_blocked = True
+        elif not eta_blocked:
+            if status == JobStatus.RUNNING.value and isinstance(started_at, datetime):
+                started = started_at if started_at.tzinfo else started_at.replace(tzinfo=timezone.utc)
+                elapsed = max(0, int((now - started).total_seconds()))
+                remaining = max(0, duration - elapsed)
+                estimated_start = started
+                estimated_end = now + timedelta(seconds=remaining)
+                cursor = estimated_end
+            elif status in (JobStatus.QUEUED.value, JobStatus.RETRYING.value):
+                estimated_start = cursor
+                estimated_end = cursor + timedelta(seconds=duration)
+                cursor = estimated_end
+
+        items.append(
+            QueueItem(
+                id=str(row["id"]),
+                title=title,
+                isbn=str(row.get("isbn") or ""),
+                status=status,
+                stage=stage,
+                message=_queue_message(status, stage, row.get("erro")),
+                pageCount=page_count,
+                createdAt=_iso(row.get("created_at")) or "",
+                startedAt=_iso(started_at if isinstance(started_at, datetime) else None),
+                finishedAt=_iso(row.get("finished_at") if isinstance(row.get("finished_at"), datetime) else None),
+                estimatedDurationSeconds=duration,
+                estimatedStartAt=_iso(estimated_start),
+                estimatedEndAt=_iso(estimated_end),
+                queuePosition=index,
+                canDownload=False,
+                errorMessage=(str(row.get("erro") or "").strip() or None),
+            )
+        )
+    return items
+
+
+def _map_finished_queue(rows: list[dict]) -> list[QueueItem]:
+    items: list[QueueItem] = []
+    for row in rows:
+        metadata = row.get("metadata") or {}
+        if not isinstance(metadata, dict):
+            metadata = {}
+        page_count_raw = metadata.get("page_count")
+        try:
+            page_count = int(page_count_raw) if page_count_raw is not None else None
+        except (TypeError, ValueError):
+            page_count = None
+        if page_count is not None and page_count <= 0:
+            page_count = None
+        title = (
+            str(row.get("titulo") or "").strip()
+            or str(metadata.get("filename") or metadata.get("title") or "").strip()
+            or str(row.get("isbn") or "Livro")
+        )
+        status = str(row.get("status") or "")
+        started_at = row.get("started_at")
+        finished_at = row.get("finished_at")
+        duration = None
+        if isinstance(started_at, datetime) and isinstance(finished_at, datetime):
+            s = started_at if started_at.tzinfo else started_at.replace(tzinfo=timezone.utc)
+            f = finished_at if finished_at.tzinfo else finished_at.replace(tzinfo=timezone.utc)
+            duration = max(0, int((f - s).total_seconds()))
+        items.append(
+            QueueItem(
+                id=str(row["id"]),
+                title=title,
+                isbn=str(row.get("isbn") or ""),
+                status=status,
+                stage=str(row.get("etapa_atual") or ""),
+                message=_queue_message(status, str(row.get("etapa_atual") or ""), row.get("erro")),
+                pageCount=page_count,
+                createdAt=_iso(row.get("created_at")) or "",
+                startedAt=_iso(started_at if isinstance(started_at, datetime) else None),
+                finishedAt=_iso(finished_at if isinstance(finished_at, datetime) else None),
+                estimatedDurationSeconds=duration,
+                canDownload=status in (JobStatus.DONE.value, JobStatus.PARTIAL_SUCCESS.value),
+                errorMessage=(str(row.get("erro") or "").strip() or None),
+            )
+        )
+    return items
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -143,6 +305,25 @@ def list_books(limit: int = 100) -> BookListResponse:
         raise HTTPException(status_code=500, detail="Falha ao listar livros processados.") from exc
 
 
+@app.get(f"{settings.api_prefix}/queue", response_model=QueueResponse)
+def list_processing_queue(tab: str = "open", limit: int = 100) -> QueueResponse:
+    normalized_tab = (tab or "open").strip().lower()
+    if normalized_tab not in ("open", "finished"):
+        raise HTTPException(status_code=400, detail="tab deve ser 'open' ou 'finished'.")
+    try:
+        rows = jobs_repo.list_queue(tab=normalized_tab, limit=limit)
+        items = _estimate_open_queue(rows) if normalized_tab == "open" else _map_finished_queue(rows)
+        return QueueResponse(
+            tab=normalized_tab,
+            items=items,
+            secondsPerPage=SECONDS_PER_PAGE,
+            calibrationNote=QUEUE_CALIBRATION_NOTE,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Erro ao listar fila: %s", exc)
+        raise HTTPException(status_code=500, detail="Falha ao listar fila de processamento.") from exc
+
+
 @app.post(f"{settings.api_prefix}/jobs/upload-init", response_model=UploadInitResponse)
 def init_presigned_upload(payload: UploadInitRequest) -> UploadInitResponse:
     try:
@@ -187,6 +368,19 @@ def complete_presigned_upload(payload: UploadCompleteRequest) -> JobResponse:
         if not storage.pdf_object_exists(payload.object_path):
             raise ValidationError("PDF ainda nao encontrado no storage. Conclua o upload antes de finalizar.")
 
+        page_count = payload.page_count
+        if not page_count:
+            try:
+                pdf_bytes = storage.download_by_storage_path(payload.storage_path)
+                page_count = count_pdf_pages(pdf_bytes)
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "Nao foi possivel contar paginas no upload-complete de %s",
+                    payload.filename,
+                    exc_info=True,
+                )
+                page_count = None
+
         return _create_linearize_job(
             normalized_isbn=book_key,
             filename=payload.filename,
@@ -195,6 +389,7 @@ def complete_presigned_upload(payload: UploadCompleteRequest) -> JobResponse:
             miolo_only=payload.miolo_only,
             test_run=payload.test_run,
             prompt_overrides=payload.prompt_overrides,
+            page_count=page_count,
         )
     except AppError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -235,6 +430,11 @@ async def create_job_from_upload(
 
         process_version = _process_version()
         storage_path_pdf = pdf_storage.store(normalized_isbn, pdf_content, process_version=process_version)
+        page_count: int | None = None
+        try:
+            page_count = count_pdf_pages(pdf_content)
+        except Exception:  # noqa: BLE001
+            logger.warning("Nao foi possivel contar paginas no upload de %s", pdf_file.filename, exc_info=True)
         return _create_linearize_job(
             normalized_isbn=normalized_isbn,
             filename=pdf_file.filename or "original.pdf",
@@ -243,6 +443,7 @@ async def create_job_from_upload(
             miolo_only=miolo_only,
             test_run=test_run,
             prompt_overrides=overrides_payload,
+            page_count=page_count,
         )
     except AppError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -356,6 +557,11 @@ async def create_jobs_from_multi_upload(
             normalized_isbn = resolve_book_key(file_isbn, file.filename)
 
             storage_path_pdf = pdf_storage.store(normalized_isbn, pdf_content, process_version=process_version)
+            page_count: int | None = None
+            try:
+                page_count = count_pdf_pages(pdf_content)
+            except Exception:  # noqa: BLE001
+                logger.warning("Nao foi possivel contar paginas no upload de %s", file.filename, exc_info=True)
             books_repo.upsert(
                 normalized_isbn,
                 metadata={
@@ -363,19 +569,22 @@ async def create_jobs_from_multi_upload(
                     "storage_path_pdf": storage_path_pdf,
                 },
             )
+            meta = {
+                "filename": file.filename or "original.pdf",
+                "pipeline_mode": JobType.LINEARIZAR.value,
+                "linearize_only": True,
+                "process_version": process_version,
+                "openai_model": settings.openai_model_linearization,
+                "pdf_render_dpi": settings.pdf_render_dpi,
+                "pdf_storage_path": storage_path_pdf,
+            }
+            if page_count:
+                meta["page_count"] = page_count
             created = jobs_repo.create(
                 isbn=normalized_isbn,
                 job_type=job_type,
                 prompt_version=prompt_version,
-                metadata={
-                    "filename": file.filename or "original.pdf",
-                    "pipeline_mode": JobType.LINEARIZAR.value,
-                    "linearize_only": True,
-                    "process_version": process_version,
-                    "openai_model": settings.openai_model_linearization,
-                    "pdf_render_dpi": settings.pdf_render_dpi,
-                    "pdf_storage_path": storage_path_pdf,
-                },
+                metadata=meta,
             )
             created_jobs.append({"job_id": str(created["id"]), "isbn": normalized_isbn})
 

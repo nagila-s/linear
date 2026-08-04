@@ -145,6 +145,13 @@ export async function uploadPdfViaPresigned(
   if (hasPromptOverrides(options)) {
     completeBody.prompt_overrides = options.promptOverrides;
   }
+  try {
+    const { countPdfPages } = await import("@/lib/pdf-page-count");
+    const pageCount = await countPdfPages(file);
+    if (pageCount > 0) completeBody.page_count = pageCount;
+  } catch {
+    // Estimativa na fila fica sem page_count até o worker backfillar.
+  }
 
   const completeResponse = await fetch("/api/process/upload-complete", {
     method: "POST",

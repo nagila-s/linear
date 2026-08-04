@@ -17,6 +17,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       miolo_only?: boolean;
       test_run?: boolean;
       prompt_overrides?: Record<string, string>;
+      page_count?: number;
     };
 
     if (!body.isbn || !body.storage_path || !body.object_path || !body.token || !body.filename) {
@@ -37,6 +38,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         miolo_only: Boolean(body.miolo_only),
         test_run: Boolean(body.test_run),
         prompt_overrides: body.prompt_overrides ?? null,
+        page_count: body.page_count ?? null,
       }),
     });
 

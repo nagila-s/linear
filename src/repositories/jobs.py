@@ -178,6 +178,53 @@ class JobsRepository:
             with conn.cursor() as cur:
                 cur.execute(query, (JobStatus.QUEUED.value, str(job_id)))
 
+    def merge_metadata(self, job_id: UUID, patch: Dict[str, Any]) -> None:
+        query = """
+            UPDATE jobs
+            SET
+                metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb,
+                updated_at = NOW()
+            WHERE id = %s
+        """
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, (Jsonb(patch or {}), str(job_id)))
+
+    def list_queue(self, *, tab: str = "open", limit: int = 100) -> list[Dict[str, Any]]:
+        safe_limit = min(max(int(limit), 1), 200)
+        if tab == "finished":
+            status_filter = (JobStatus.DONE.value, JobStatus.FAILED.value, JobStatus.PARTIAL_SUCCESS.value)
+            order_sql = "ORDER BY COALESCE(j.finished_at, j.updated_at) DESC, j.created_at DESC"
+        else:
+            status_filter = (JobStatus.QUEUED.value, JobStatus.RUNNING.value, JobStatus.RETRYING.value)
+            order_sql = "ORDER BY j.created_at ASC"
+
+        query = f"""
+            SELECT
+                j.id,
+                j.status::text AS status,
+                j.etapa_atual,
+                j.erro,
+                j.created_at,
+                j.updated_at,
+                j.started_at,
+                j.finished_at,
+                j.metadata,
+                j.processed_items,
+                j.failed_items,
+                b.isbn,
+                b.titulo
+            FROM jobs j
+            LEFT JOIN books b ON b.id = j.book_id
+            WHERE j.status::text = ANY(%s)
+            {order_sql}
+            LIMIT %s
+        """
+        with get_conn() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(query, (list(status_filter), safe_limit))
+                return list(cur.fetchall())
+
     def requeue_stale_running_jobs(self, stale_minutes: int) -> int:
         query = """
             UPDATE jobs

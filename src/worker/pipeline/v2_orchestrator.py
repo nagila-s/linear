@@ -118,6 +118,20 @@ async def run(job: dict, _queue) -> dict:
 
     await asyncio.to_thread(jobs_repo.update_stage, job_id, "preprocess")
     ctx = await extract_images.run(ctx)
+    pages = ctx.get("pages") or []
+    if isinstance(pages, list) and pages:
+        actual_pages = len(pages)
+        existing_raw = job_metadata.get("page_count")
+        try:
+            existing = int(existing_raw) if existing_raw is not None else None
+        except (TypeError, ValueError):
+            existing = None
+        if existing != actual_pages:
+            await asyncio.to_thread(
+                jobs_repo.merge_metadata,
+                job_id,
+                {"page_count": actual_pages},
+            )
     await asyncio.to_thread(jobs_repo.update_stage, job_id, "linearize")
     ctx = await describe.run(ctx)
 
