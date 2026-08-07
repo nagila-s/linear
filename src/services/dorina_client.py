@@ -56,7 +56,7 @@ class DorinaService:
                 "imageId": image_id,
                 "documentId": document_id,
                 "url": image_url,
-                "braille": self.settings.dorina_braille,
+                "braille": False,
                 "documentType": self.settings.dorina_document_type,
                 "context": self._compose_context(context),
             }

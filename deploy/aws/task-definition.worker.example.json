@@ -21,7 +21,7 @@
         { "name": "BUCKET_FIGURES", "value": "figures" },
         { "name": "BUCKET_JSON", "value": "json" },
         { "name": "DORINA_API_KEY_HEADER", "value": "Authorization" },
-        { "name": "DORINA_BRAILLE", "value": "true" }
+        { "name": "DORINA_BRAILLE", "value": "false" }
       ],
       "secrets": [
         { "name": "SUPABASE_URL", "valueFrom": "arn:aws:ssm:REGION:ACCOUNT_ID:parameter/linear/SUPABASE_URL" },

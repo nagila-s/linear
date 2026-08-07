@@ -28,7 +28,7 @@ export async function describeWithDorina(options: {
         imageId: 0,
         documentId: 0,
         url: options.imageUrl,
-        braille: (Deno.env.get("DORINA_BRAILLE") || "false") === "true",
+        braille: false,
         documentType: Deno.env.get("DORINA_DOCUMENT_TYPE") || "string",
         context,
       },
