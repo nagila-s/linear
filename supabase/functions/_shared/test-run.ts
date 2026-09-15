@@ -82,26 +82,6 @@ export async function sha256Hex(text: string): Promise<string> {
     .join("");
 }
 
-const ILLEGAL_JSON_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g;
-
-/** Remove U+0000 e outros C0 que o PostgreSQL jsonb recusa. */
-export function sanitizeJsonForPostgres<T>(value: T): T {
-  if (typeof value === "string") {
-    return value.replace(ILLEGAL_JSON_CHARS, "") as T;
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => sanitizeJsonForPostgres(item)) as T;
-  }
-  if (value && typeof value === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
-      out[key.replace(ILLEGAL_JSON_CHARS, "")] = sanitizeJsonForPostgres(nested);
-    }
-    return out as T;
-  }
-  return value;
-}
-
 export function validateLinearizationRoot(data: unknown): { ok: boolean; error?: string } {
   if (!data || typeof data !== "object" || Array.isArray(data)) {
     return { ok: false, error: "Resposta nao e um objeto JSON." };

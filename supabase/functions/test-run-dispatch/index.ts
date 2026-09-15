@@ -6,7 +6,6 @@ import {
   normalizePageType,
   readQueue,
   refreshCounters,
-  sanitizeJsonForPostgres,
   sha256Hex,
   shouldClassify,
   signedUrl,
@@ -249,13 +248,13 @@ async function linearizePage(
     }
   }
 
-  const content = sanitizeJsonForPostgres({
+  const content = {
     ...result.data,
     tipo_pagina: pageType,
     prompt_version: "test",
     prompt_file: promptFile,
     prompt_hash: promptHash,
-  });
+  };
 
   await supabase
     .from("test_pages")
@@ -357,7 +356,7 @@ async function describeFigure(
     imageUrl,
     context: figure.context || "",
   });
-  const description = sanitizeJsonForPostgres(String(payload.description || "").trim());
+  const description = String(payload.description || "").trim();
   if (!description) throw new Error("Dorina retornou descricao vazia.");
 
   await supabase
@@ -365,7 +364,7 @@ async function describeFigure(
     .update({
       status: "ok",
       description,
-      dorina_payload: sanitizeJsonForPostgres(payload),
+      dorina_payload: payload,
       error_message: null,
     })
     .eq("id", figureId);
@@ -395,7 +394,7 @@ async function applyDescriptionToPage(
     }
     return item;
   });
-  await supabase.from("test_pages").update({ content: sanitizeJsonForPostgres(content) }).eq("id", pageId);
+  await supabase.from("test_pages").update({ content }).eq("id", pageId);
 }
 
 async function maybeEnqueueFinalize(
