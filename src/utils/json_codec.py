@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import codecs
 import json
 import logging
@@ -8,21 +10,57 @@ _UNICODE_ESCAPE_RE = re.compile(r"\\u[0-9a-fA-F]{4}|\\U[0-9a-fA-F]{8}")
 _TRAILING_COMMA_RE = re.compile(r",(\s*[}\]])")
 _FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE | re.MULTILINE)
 _TRAILING_COMMA_EOF_RE = re.compile(r",\s*$")
+# PostgreSQL jsonb rejeita U+0000. Demais C0 (exceto tab/LF/CR) nao pertencem a texto literario.
+_ILLEGAL_JSON_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+_JSON_NUL_ESCAPE_RE = re.compile(r"\\u0000", re.IGNORECASE)
 
 logger = logging.getLogger(__name__)
 
 
-def normalize_unicode_in_json(value: Any) -> Any:
-    """Converte sequencias literais \\uXXXX ainda presentes em strings apos parse."""
+def _decode_unicode_escape_match(match: re.Match[str]) -> str:
+    seq = match.group(0)
+    try:
+        return codecs.decode(seq, "unicode_escape")
+    except (UnicodeError, ValueError):
+        return seq
+
+
+def sanitize_json_string(value: str) -> str:
+    """Remove NUL e outros controles ilegais para jsonb/texto no PostgreSQL."""
+    return _ILLEGAL_JSON_CHARS_RE.sub("", value)
+
+
+def sanitize_json_for_postgres(value: Any) -> Any:
+    """Limpa recursivamente um payload JSON antes de gravar em coluna jsonb."""
     if isinstance(value, dict):
-        return {k: normalize_unicode_in_json(v) for k, v in value.items()}
+        return {
+            sanitize_json_string(k) if isinstance(k, str) else k: sanitize_json_for_postgres(v)
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [sanitize_json_for_postgres(v) for v in value]
+    if isinstance(value, str):
+        return sanitize_json_string(value)
+    return value
+
+
+def normalize_unicode_in_json(value: Any) -> Any:
+    """Converte sequencias literais \\uXXXX ainda presentes em strings apos parse.
+
+    Decodifica so os escapes, sem passar a string inteira por unicode_escape
+    (isso corrompe UTF-8 de portugues, ex.: 'ção' -> 'Ã§Ã£o'). NUL e descartado.
+    """
+    if isinstance(value, dict):
+        return {
+            normalize_unicode_in_json(k) if isinstance(k, str) else k: normalize_unicode_in_json(v)
+            for k, v in value.items()
+        }
     if isinstance(value, list):
         return [normalize_unicode_in_json(v) for v in value]
-    if isinstance(value, str) and _UNICODE_ESCAPE_RE.search(value):
-        try:
-            return codecs.decode(value, "unicode_escape")
-        except (UnicodeError, ValueError):
-            return value
+    if isinstance(value, str):
+        if _UNICODE_ESCAPE_RE.search(value):
+            value = _UNICODE_ESCAPE_RE.sub(_decode_unicode_escape_match, value)
+        return sanitize_json_string(value)
     return value
 
 
@@ -37,6 +75,9 @@ def repair_llm_json_text(text: str) -> str:
         ("\u2019", "'"),
     ):
         cleaned = cleaned.replace(old, new)
+    # json.loads transformaria \\u0000 em NUL real; o Postgres jsonb recusa isso.
+    cleaned = _JSON_NUL_ESCAPE_RE.sub("", cleaned)
+    cleaned = cleaned.replace("\x00", "")
     cleaned = _TRAILING_COMMA_RE.sub(r"\1", cleaned)
     return cleaned
 
@@ -127,7 +168,9 @@ def _try_load_dict(payload: str) -> dict[str, Any] | None:
             parsed = json.loads(payload)
         except json.JSONDecodeError:
             return None
-    return parsed if isinstance(parsed, dict) else None
+    if not isinstance(parsed, dict):
+        return None
+    return sanitize_json_for_postgres(parsed)
 
 
 def parse_llm_json(content: str) -> dict[str, Any]:
@@ -169,11 +212,11 @@ def parse_llm_json(content: str) -> dict[str, Any]:
 
         repaired = repair_json(cleaned, return_objects=True)
         if isinstance(repaired, dict):
-            return repaired
+            return sanitize_json_for_postgres(repaired)
         if isinstance(repaired, str):
             parsed = _try_load_dict(repaired)
             if parsed is not None:
-                return parsed
+                return sanitize_json_for_postgres(parsed)
     except Exception as exc:  # noqa: BLE001
         logger.debug("json_repair falhou: %s", exc)
 

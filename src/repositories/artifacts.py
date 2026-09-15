@@ -4,6 +4,11 @@ from uuid import UUID
 from psycopg.types.json import Jsonb
 
 from src.repositories.db import get_conn
+from src.utils.json_codec import sanitize_json_for_postgres
+
+
+def _jsonb(payload: Any) -> Jsonb:
+    return Jsonb(sanitize_json_for_postgres(payload))
 
 
 class ArtifactsRepository:
@@ -64,8 +69,8 @@ class ArtifactsRepository:
                 cur.execute(
                     query,
                     (
-                        Jsonb(context_local),
-                        Jsonb(context_structural),
+                        _jsonb(context_local),
+                        _jsonb(context_structural),
                         prompt_version,
                         figure_id,
                     ),
@@ -94,12 +99,14 @@ class ArtifactsRepository:
         """
         with get_conn() as conn:
             with conn.cursor() as cur:
-                description_text = str(payload.get("description") or payload.get("texto") or payload.get("caption") or "")
+                description_text = sanitize_json_for_postgres(
+                    str(payload.get("description") or payload.get("texto") or payload.get("caption") or "")
+                )
                 model_version = str(payload.get("model") or payload.get("model_version") or "unknown")
                 quality_flags = payload.get("quality_flags", {})
                 cur.execute(
                     query,
-                    (figure_id, model_version, prompt_version, description_text, Jsonb(quality_flags)),
+                    (figure_id, model_version, prompt_version, description_text, _jsonb(quality_flags)),
                 )
 
     def get_final_json_storage_path(self, job_id: UUID) -> str | None:
@@ -140,7 +147,7 @@ class ArtifactsRepository:
                 updated_at = NOW()
         """
         version_tag = str(payload.get("process_version") or payload.get("prompt_version") or "v1")
-        raw_payload = Jsonb(payload)
+        raw_payload = _jsonb(payload)
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -163,7 +170,7 @@ class ArtifactsRepository:
         """
         with get_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(query, (book_id, Jsonb(payload), normalized_status))
+                cur.execute(query, (book_id, _jsonb(payload), normalized_status))
 
     def add_export_avalia(self, figure_id: str, payload: Dict[str, Any], status: str) -> None:
         normalized_status = self._normalize_export_status(status)
@@ -173,4 +180,4 @@ class ArtifactsRepository:
         """
         with get_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(query, (figure_id, Jsonb(payload), normalized_status))
+                cur.execute(query, (figure_id, _jsonb(payload), normalized_status))
