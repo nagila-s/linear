@@ -12,10 +12,14 @@ Exemplo (JSON válido):
 }
 
 [REGRAS GERAIS]
+- FIDELIDADE ABSOLUTA: transcreva COMPLETA e UNICAMENTE o que está visível nesta página. Não invente informações, não complete trechos, não parafraseie, não adicione explicações, comentários ou resumos seus, e não inclua títulos/rótulos/seções que não estejam impressos (ex.: não criar "Atividades" ou "Leitura" se essas palavras não aparecerem). Título só existe se o texto correspondente estiver na página.
 - Retorne apenas JSON válido, sem markdown.
 - Números de página impressos no livro vão só no campo raiz "pagina".
 - Tipos de bloco permitidos: titulo_1..titulo_5, paragrafo, lista, tabela, quadro, boxe_complementar, ficha_catalografica, imagem, nota, nota_rodape, glossario, glossario_inline, atividade, fonte, link, sumario, item, subitem.
 - Use \n para quebras de linha dentro de strings JSON.
+- Página em duas colunas: leia coluna esquerda inteira e depois a direita (ou siga a numeração das questões). Nunca ignore uma coluna.
+- Citações/excertos com aspas tipográficas ou aspas gráficas grandes: transcreva o texto por extenso (tipo "titulo_4" + "fonte" se houver). Nunca omita nem resuma.
+- "conteudo" não pode ficar vazio se a página tiver texto legível.
 
 [IMAGENS]
 - Use tipo "imagem" com id sequencial por página: fig1, fig2…

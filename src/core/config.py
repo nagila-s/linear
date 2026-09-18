@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     prompts_directory: str = "prompts"
     classification_window_start: int = 20
     classification_window_end: int = 15
-    linear_prompt_version: str = "v1"
+    linear_prompt_version: str = "v2"
     context_prompt_version: str = "v1"
     dorina_prompt_version: str = "v1"
     process_version_strategy: str = "lin-{linear_prompt_version}"
