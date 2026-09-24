@@ -273,7 +273,7 @@ function dehyphenateAndMerge(raw: Array<{ text: string; estilo: string }>): Text
 async function extractPageTextStyles(
   page: {
     getTextContent: (opts?: { includeMarkedContent?: boolean }) => Promise<{
-      items: Array<{ str?: string; fontName?: string; hasEOL?: boolean }>;
+      items: ReadonlyArray<unknown>;
     }>;
   },
   pageNumber: number,
@@ -281,10 +281,12 @@ async function extractPageTextStyles(
   const content = await page.getTextContent({ includeMarkedContent: false });
   const raw: Array<{ text: string; estilo: string }> = [];
   for (const item of content.items || []) {
-    if (!item || typeof item.str !== "string" || !item.str) continue;
-    const estilo = classifyFontStyleFromName(String(item.fontName || ""));
-    raw.push({ text: item.str, estilo });
-    if (item.hasEOL) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as { str?: unknown; fontName?: unknown; hasEOL?: unknown };
+    if (typeof record.str !== "string" || !record.str) continue;
+    const estilo = classifyFontStyleFromName(String(record.fontName || ""));
+    raw.push({ text: record.str, estilo });
+    if (record.hasEOL) {
       raw.push({ text: "\n", estilo });
     }
   }
