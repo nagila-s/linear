@@ -82,16 +82,31 @@ async def run(job: dict, _queue) -> dict:
     if not isinstance(job_metadata, dict):
         job_metadata = {}
     miolo_only = bool(job_metadata.get("miolo_only"))
+    literario = bool(job_metadata.get("literario"))
     prompt_overrides = sanitize_prompt_overrides(job_metadata.get("prompt_overrides"))
     test_run = bool(job_metadata.get("test_run")) or bool(prompt_overrides)
-    openai = OpenAIService(miolo_only=miolo_only, prompt_overrides=prompt_overrides or None)
+    openai = OpenAIService(
+        miolo_only=miolo_only,
+        literario=literario,
+        prompt_overrides=prompt_overrides or None,
+    )
     dorina = DorinaClient()
 
     job_id = UUID(str(job_data["id"]))
     jobs_repo = JobsRepository()
 
-    if miolo_only:
+    if miolo_only and literario:
+        logger.info(
+            "job=%s literario=true miolo_only=true — classificador desligado, prompt literario em todas as paginas",
+            job_data["id"],
+        )
+    elif miolo_only:
         logger.info("job=%s miolo_only=true — classificador desligado, prompt base em todas as paginas", job_data["id"])
+    elif literario:
+        logger.info(
+            "job=%s literario=true — classificador reduzido (capa, sumario, ficha, conteudo, contracapa)",
+            job_data["id"],
+        )
     if test_run:
         logger.info(
             "job=%s test_run=true — usando %s prompt override(s)",
@@ -114,6 +129,7 @@ async def run(job: dict, _queue) -> dict:
         "pdf_render_dpi": app_settings.pdf_render_dpi,
         "linearize_page_concurrency": app_settings.linearize_page_concurrency,
         "miolo_only": miolo_only,
+        "literario": literario,
     }
 
     await asyncio.to_thread(jobs_repo.update_stage, job_id, "preprocess")
@@ -199,6 +215,16 @@ async def run(job: dict, _queue) -> dict:
         "linear.json",
         linear_payload,
     )
+    text_spans_payload = ctx.get("text_spans_payload")
+    if isinstance(text_spans_payload, dict):
+        await asyncio.to_thread(
+            storage.upload_json,
+            ctx["isbn"],
+            process_version,
+            ctx["job_id"],
+            "text_spans.json",
+            text_spans_payload,
+        )
     await asyncio.to_thread(
         storage.upload_json,
         ctx["isbn"],

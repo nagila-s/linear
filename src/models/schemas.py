@@ -88,6 +88,7 @@ class UploadInitRequest(BaseModel):
     job_type: JobType = JobType.LINEARIZAR
     prompt_version: str = Field(default="v1")
     miolo_only: bool = False
+    literario: bool = False
     test_run: bool = False
     prompt_overrides: Optional[Dict[str, str]] = None
 
@@ -111,6 +112,7 @@ class UploadCompleteRequest(BaseModel):
     job_type: JobType = JobType.LINEARIZAR
     prompt_version: str = Field(default="v1")
     miolo_only: bool = False
+    literario: bool = False
     test_run: bool = False
     prompt_overrides: Optional[Dict[str, str]] = None
     page_count: Optional[int] = Field(default=None, ge=1, le=5000)

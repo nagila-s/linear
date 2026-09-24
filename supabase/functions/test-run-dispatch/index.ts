@@ -16,6 +16,14 @@ import {
 } from "../_shared/test-run.ts";
 import { askVisionJson, askVisionText } from "../_shared/openai.ts";
 import { describeWithDorina } from "../_shared/dorina.ts";
+import { omitImageCredits, stripImageCredits } from "../_shared/image-credits.ts";
+import { mergeStylesIntoPage, pagesFromPayload } from "../_shared/style-merge.ts";
+import {
+  analyzeTextGaps,
+  buildGapFillPrompt,
+  editorialCharCount,
+  preservesClassification,
+} from "../_shared/text-gap-fill.ts";
 
 const LINEARIZATION_SCHEMA = {
   name: "linearizacao_pagina",
@@ -256,18 +264,84 @@ async function linearizePage(
     prompt_hash: promptHash,
   };
 
+  const filled = omitImageCredits(
+    await fillTextGapsIfNeeded(supabase, msg.job_id, page.page_number, imageUrl, content),
+  ) as Record<string, unknown>;
+
   await supabase
     .from("test_pages")
     .update({
       status: "ok",
-      content,
+      content: filled,
       openai_response_id: result.responseId ?? null,
       error_message: null,
     })
     .eq("id", pageId);
 
-  await enqueueFiguresOrFinalize(supabase, msg.job_id, { ...page, page_type: pageType, content });
+  await enqueueFiguresOrFinalize(supabase, msg.job_id, { ...page, page_type: pageType, content: filled });
   await refreshCounters(supabase, msg.job_id);
+}
+
+async function loadPagePlainText(
+  supabase: ReturnType<typeof getServiceClient>,
+  jobId: string,
+  pageNumber: number,
+): Promise<string> {
+  try {
+    const { data, error } = await supabase.storage
+      .from(TEST_RUNS_BUCKET)
+      .download(`${jobId}/text_spans.json`);
+    if (error || !data) return "";
+    const payload = JSON.parse(await data.text()) as {
+      pages?: Array<{ page_number: number; runs?: Array<{ text?: string }> }>;
+    };
+    const byPage = pagesFromPayload(payload);
+    const styles = byPage.get(pageNumber);
+    if (!styles) return "";
+    return stripImageCredits(styles.runs.map((run) => run.text).join(""));
+  } catch {
+    return "";
+  }
+}
+
+async function fillTextGapsIfNeeded(
+  supabase: ReturnType<typeof getServiceClient>,
+  jobId: string,
+  pageNumber: number,
+  imageUrl: string,
+  content: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const enabled = (Deno.env.get("TEXT_GAP_FILL_ENABLED") || "true").toLowerCase() !== "false";
+  if (!enabled) return content;
+
+  const plain = await loadPagePlainText(supabase, jobId, pageNumber);
+  const report = analyzeTextGaps(content, plain);
+  if (!report.needsFill) return content;
+
+  const model = Deno.env.get("OPENAI_MODEL_CLASSIFIER") || "gpt-4.1-mini";
+  const maxTokens = Number(Deno.env.get("TEXT_GAP_FILL_MAX_OUTPUT_TOKENS") || 16384);
+  try {
+    const patched = await askVisionJson({
+      prompt: buildGapFillPrompt(content, plain, report.missingSpans),
+      imageUrl,
+      model,
+      maxTokens: Number.isFinite(maxTokens) && maxTokens > 0 ? maxTokens : 16384,
+      jsonSchema: LINEARIZATION_SCHEMA,
+    });
+    const data = patched.data;
+    if (!data || typeof data !== "object") return content;
+    if (!preservesClassification(content, data)) return content;
+    if (editorialCharCount(data) < editorialCharCount(content)) return content;
+    return {
+      ...data,
+      tipo_pagina: content.tipo_pagina,
+      prompt_version: content.prompt_version,
+      prompt_file: content.prompt_file,
+      prompt_hash: content.prompt_hash,
+    };
+  } catch {
+    return content;
+  }
 }
 
 async function enqueueFiguresOrFinalize(
@@ -440,6 +514,41 @@ async function finalizeJob(
   const promptHashes =
     ((job.metadata as Record<string, unknown> | null)?.prompt_hashes as Record<string, string>) || {};
 
+  // Merge tipográfico a partir de text_spans.json (extraído no browser via PDF.js).
+  let textSpansByPage = pagesFromPayload(null);
+  try {
+    const { data: spansBlob, error: spansError } = await supabase.storage
+      .from(TEST_RUNS_BUCKET)
+      .download(`${jobId}/text_spans.json`);
+    if (!spansError && spansBlob) {
+      const spansJson = JSON.parse(await spansBlob.text());
+      textSpansByPage = pagesFromPayload(spansJson);
+    }
+  } catch {
+    // Sem spans: final.json sai sem merge (PDF escaneado / upload antigo).
+  }
+
+  const mergedPages = (pages || []).map((page) => {
+    const content = page.content;
+    const styles = textSpansByPage.get(page.page_number);
+    let mergedContent = content;
+    if (content && typeof content === "object" && !Array.isArray(content) && styles) {
+      mergedContent = omitImageCredits(
+        mergeStylesIntoPage(content as Record<string, unknown>, styles),
+      );
+    }
+    return {
+      page_number: page.page_number,
+      status: page.status,
+      content: mergedContent,
+      prompt_file: page.prompt_file,
+      prompt_hash: page.prompt_hash,
+      openai_model: page.openai_model,
+      openai_response_id: page.openai_response_id,
+      page_type: page.page_type,
+    };
+  });
+
   const finalPayload = {
     isbn: job.isbn,
     job_id: job.id,
@@ -452,16 +561,7 @@ async function finalizeJob(
     prompt_hash: job.prompt_hash,
     prompt_hashes: promptHashes,
     prompt_files: Object.keys(job.prompt_snapshot || {}).sort(),
-    pages: (pages || []).map((page) => ({
-      page_number: page.page_number,
-      status: page.status,
-      content: page.content,
-      prompt_file: page.prompt_file,
-      prompt_hash: page.prompt_hash,
-      openai_model: page.openai_model,
-      openai_response_id: page.openai_response_id,
-      page_type: page.page_type,
-    })),
+    pages: mergedPages,
     image_context: (figures || [])
       .filter((f) => f.context)
       .map((f) => ({ figure_key: f.figure_key, context: f.context })),

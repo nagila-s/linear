@@ -28,6 +28,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const isbnInput = String(incoming.get("isbn") ?? "").trim();
     const mioloOnly = String(incoming.get("miolo_only") ?? "false") === "true";
+    const literario = String(incoming.get("literario") ?? "false") === "true";
     const testRun = String(incoming.get("test_run") ?? "false") === "true";
     const promptOverridesRaw = String(incoming.get("prompt_overrides") ?? "").trim();
 
@@ -39,6 +40,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     backendForm.append("job_type", "linearizar");
     backendForm.append("prompt_version", "v1");
     backendForm.append("miolo_only", mioloOnly ? "true" : "false");
+    backendForm.append("literario", literario ? "true" : "false");
     backendForm.append("test_run", testRun ? "true" : "false");
     if (promptOverridesRaw) {
       backendForm.append("prompt_overrides", promptOverridesRaw);

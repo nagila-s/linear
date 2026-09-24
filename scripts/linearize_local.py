@@ -13,7 +13,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.core.config import get_settings
+from src.pipeline.steps.page_completeness import plain_text_from_page_styles
+from src.pipeline.steps.pdf_text_styles import extract_text_styles_from_pdf, pages_to_payload
 from src.pipeline.steps.preprocess import preprocess_pdf
+from src.pipeline.steps.style_merge import merge_styles_into_page
 from src.services.openai_client import OpenAIService
 
 
@@ -46,6 +49,7 @@ def linearize_pdf(
     prompt_version: str | None = None,
     dpi: int | None = None,
     concurrency: int | None = None,
+    literario: bool = False,
 ) -> Path:
     settings = get_settings()
     prompt_version = prompt_version or settings.linear_prompt_version
@@ -61,11 +65,18 @@ def linearize_pdf(
 
     pdf_bytes = pdf_path.read_bytes()
     pages = preprocess_pdf(pdf_bytes, dpi=dpi)
+    text_style_pages = extract_text_styles_from_pdf(pdf_bytes)
+    text_spans_by_page = {page.page_number: page for page in text_style_pages}
+    text_spans_path = output_dir / "text_spans.json"
+    text_spans_path.write_text(
+        json.dumps(pages_to_payload(text_style_pages), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
     for page in pages:
         (pages_dir / page.page_name).write_bytes(page.page_png)
 
     pages_done = _load_checkpoint(checkpoint_path, prompt_version)
-    openai = OpenAIService()
+    openai = OpenAIService(literario=literario)
 
     pending = [p for p in pages if p.page_number not in pages_done]
     if not pending:
@@ -74,12 +85,16 @@ def linearize_pdf(
         print(f"Linearizando {len(pending)} pagina(s) de {len(pages)} (concorrencia={concurrency})...")
 
         def _linearize(page):
+            styles = text_spans_by_page.get(page.page_number)
             content = openai.linearize_page(
                 page.page_png,
                 prompt_version,
                 page_number=page.page_number,
                 total_pages=len(pages),
+                page_plain_text=plain_text_from_page_styles(styles),
             )
+            if isinstance(content, dict) and styles is not None:
+                content = merge_styles_into_page(content, styles, page_number=page.page_number)
             return {"page_number": page.page_number, "content": content}
 
         with ThreadPoolExecutor(max_workers=concurrency) as pool:
@@ -99,6 +114,7 @@ def linearize_pdf(
         "job_type": "linearizar",
         "prompt_version": prompt_version,
         "dpi": dpi,
+        "literario": bool(literario),
         "pages": linearized_pages,
     }
     final_path.write_text(json.dumps(final_payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -118,6 +134,11 @@ def main() -> None:
     parser.add_argument("--prompt-version", default=None)
     parser.add_argument("--dpi", type=int, default=None)
     parser.add_argument("--concurrency", type=int, default=None)
+    parser.add_argument(
+        "--literario",
+        action="store_true",
+        help="Usa o prompt de livro literario (capa, sumario, ficha, miolo, contracapa).",
+    )
     args = parser.parse_args()
 
     pdf_path = args.pdf.resolve()
@@ -131,6 +152,7 @@ def main() -> None:
         prompt_version=args.prompt_version,
         dpi=args.dpi,
         concurrency=args.concurrency,
+        literario=args.literario,
     )
     print(f"Resultado: {final}")
 

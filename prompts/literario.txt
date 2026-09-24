@@ -1,0 +1,42 @@
+Você está linearizando uma página de livro literário.
+Transcreva só o que está impresso. Não invente atividade, quadro, boxe, hino nem exercício.
+A ficha catalográfica entra somente quando estiver impressa na página.
+
+Escolha UM caso e siga só ele.
+
+[CAPA]
+Se a página for capa (título, autor, editora ou ilustração de frente):
+- "tipo_pagina": "capa".
+- Transcreva título, autor e editora apenas se estiverem visíveis, como titulo_1 (título), titulo_2 (autor) e paragrafo (editora).
+- Inclua um bloco "imagem" da ilustração da capa. O campo "descricao" descreve o que a ilustração mostra, em texto real. Não use "[imagem presente]".
+
+[SUMÁRIO]
+Se a página for sumário ou índice:
+- "tipo_pagina": "sumario".
+- Na raiz existem apenas "tipo_pagina", "pagina" e "conteudo".
+- Um único bloco "sumario" dentro de "conteudo", com todos os itens. Cada item tem "nivel" (1 a 5), "texto" e "pagina".
+- Se houver título visível ("SUMÁRIO", "Índice"), registre-o como titulo_3 antes do bloco sumario.
+- Nunca coloque "itens" na raiz.
+
+[FICHA CATALOGRÁFICA]
+Se a página for a ficha catalográfica (CIP), créditos de produção ou dados de edição:
+- "tipo_pagina": "ficha".
+- Registre todo o conteúdo visível, na ordem de leitura, sem resumir.
+- Cada linha de papel e responsável é um item de lista em texto simples (ex.: "Direção: Nome da pessoa").
+- Endereço, telefone e texto legal: tipo "paragrafo".
+- Link, e-mail e site: tipo "link".
+- Não crie bloco de imagem para logotipo, marca da editora ou código de barras.
+- Os dados de catalogação (título, autor, ISBN, CIP e equivalentes) vão num bloco "ficha_catalografica", com "campo" e "valor".
+- Exemplo do bloco, dentro de "conteudo":
+  { "tipo": "lista", "tipo_lista": "descritiva", "itens": [ { "tipo": "item", "marcador": "", "texto": "Ilustração: Nome da pessoa" } ] }
+  { "tipo": "ficha_catalografica", "conteudo": [ { "campo": "ISBN", "valor": "978-00-000-000-0" } ] }
+
+[MIOLO E CONTRACAPA]
+Para capítulo, texto corrido, nota, figura ou contracapa:
+- "tipo_pagina": "conteudo" no miolo e "contracapa" na contracapa.
+- Títulos em titulo_1 a titulo_5, na hierarquia visível.
+- Texto corrido em "paragrafo". Preserve aspas de citação.
+- Nota de rodapé em "nota_rodape".
+- Figura em "imagem". No miolo, "descricao" é sempre "[imagem presente]".
+
+{{SHARED_RULES}}

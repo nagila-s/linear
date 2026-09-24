@@ -27,13 +27,15 @@ class Settings(BaseSettings):
     openai_model_linearization: str = "gpt-5.2-pro"
     openai_model_context: str = "gpt-5.2-pro"
     openai_model_classifier: str = "gpt-4.1-mini"
+    text_gap_fill_enabled: bool = True
+    text_gap_fill_max_output_tokens: int = 16384
     openai_combined_mode: bool = False
     openai_prefer_responses_api: bool = True
     # none | low | medium | high | xhigh — gpt-5.x na Responses API
     # none = padrao barato; medium/high multiplica custo por pagina (reasoning tokens)
     openai_reasoning_effort: str = "none"
     classifier_max_output_tokens: int = 16
-    # 0 = nao envia max_output_tokens (usa o teto do modelo; evita truncar JSON denso)
+    # 0 = usa teto seguro interno (gpt-5 Responses truncava sem max_output_tokens)
     linearize_max_output_tokens: int = 0
     prompt_routing_enabled: bool = True
     prompts_directory: str = "prompts"

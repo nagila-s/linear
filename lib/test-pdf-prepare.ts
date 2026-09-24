@@ -25,6 +25,28 @@ export type PreparedPage = {
   figures: ExtractedFigure[];
 };
 
+export type TextStyleRun = {
+  text: string;
+  estilo: string;
+};
+
+export type PageTextStyles = {
+  page_number: number;
+  runs: TextStyleRun[];
+  char_count: number;
+};
+
+export type TextSpansPayload = {
+  pages: PageTextStyles[];
+  total_pages: number;
+  total_chars: number;
+};
+
+export type PreparePdfResult = {
+  pages: PreparedPage[];
+  textSpans: TextSpansPayload;
+};
+
 export type PreparePdfOptions = {
   dpi?: number;
   maxPages?: number;
@@ -185,10 +207,96 @@ async function extractRasterBBoxes(page: import("pdfjs-dist").PDFPageProxy): Pro
   return boxes;
 }
 
+const BOLD_NAME_RE = /(bold|black|heavy|semibold|demi)/i;
+const ITALIC_NAME_RE = /(italic|oblique)/i;
+
+function classifyFontStyleFromName(fontName: string): string {
+  const bold = BOLD_NAME_RE.test(fontName || "");
+  const italic = ITALIC_NAME_RE.test(fontName || "");
+  if (bold && italic) return "negrito_italico";
+  if (bold) return "negrito";
+  if (italic) return "italico";
+  return "normal";
+}
+
+function dehyphenateAndMerge(raw: Array<{ text: string; estilo: string }>): TextStyleRun[] {
+  const flat: Array<{ ch: string; estilo: string }> = [];
+  for (const item of raw) {
+    for (const ch of item.text) {
+      flat.push({ ch, estilo: item.estilo });
+    }
+  }
+  const chars: Array<{ ch: string; estilo: string }> = [];
+  let i = 0;
+  while (i < flat.length) {
+    const { ch, estilo } = flat[i];
+    if (
+      ch === "-" &&
+      i + 1 < flat.length &&
+      flat[i + 1].ch === "\n" &&
+      i + 2 < flat.length &&
+      /[a-zà-ú]/.test(flat[i + 2].ch)
+    ) {
+      i += 2;
+      continue;
+    }
+    if (ch === "\n") {
+      const prev = chars.length ? chars[chars.length - 1].ch : "";
+      const nxt = i + 1 < flat.length ? flat[i + 1].ch : "";
+      if (prev && nxt && !/\s/.test(prev) && !/\s/.test(nxt)) {
+        chars.push({ ch: " ", estilo });
+      }
+      i += 1;
+      continue;
+    }
+    chars.push({ ch, estilo });
+    i += 1;
+  }
+
+  const runs: TextStyleRun[] = [];
+  let buf = "";
+  let cur = "normal";
+  for (const { ch, estilo } of chars) {
+    if (buf && estilo !== cur) {
+      runs.push({ text: buf, estilo: cur });
+      buf = ch;
+      cur = estilo;
+    } else {
+      if (!buf) cur = estilo;
+      buf += ch;
+    }
+  }
+  if (buf) runs.push({ text: buf, estilo: cur });
+  return runs;
+}
+
+async function extractPageTextStyles(
+  page: {
+    getTextContent: (opts?: { includeMarkedContent?: boolean }) => Promise<{
+      items: Array<{ str?: string; fontName?: string; hasEOL?: boolean }>;
+    }>;
+  },
+  pageNumber: number,
+): Promise<PageTextStyles> {
+  const content = await page.getTextContent({ includeMarkedContent: false });
+  const raw: Array<{ text: string; estilo: string }> = [];
+  for (const item of content.items || []) {
+    if (!item || typeof item.str !== "string" || !item.str) continue;
+    const estilo = classifyFontStyleFromName(String(item.fontName || ""));
+    raw.push({ text: item.str, estilo });
+    if (item.hasEOL) {
+      raw.push({ text: "\n", estilo });
+    }
+  }
+  const runs = dehyphenateAndMerge(raw);
+  const char_count = runs.reduce((acc, r) => acc + r.text.length, 0);
+  return { page_number: pageNumber, runs, char_count };
+}
+
 export async function preparePdfPages(
   file: File | ArrayBuffer,
   options: PreparePdfOptions = {},
-): Promise<PreparedPage[]> {
+): Promise<PreparePdfResult> {
   const dpi = options.dpi ?? 120;
   const scale = dpi / 72;
   const maxPages = options.maxPages ?? 30;
@@ -197,6 +305,7 @@ export async function preparePdfPages(
   const doc = await pdfjs.getDocument({ data }).promise;
   const total = Math.min(doc.numPages, maxPages);
   const pages: PreparedPage[] = [];
+  const textPages: PageTextStyles[] = [];
 
   for (let pageNumber = 1; pageNumber <= total; pageNumber++) {
     const page = await doc.getPage(pageNumber);
@@ -245,6 +354,8 @@ export async function preparePdfPages(
       });
     }
 
+    textPages.push(await extractPageTextStyles(page, pageNumber));
+
     pages.push({
       pageNumber,
       widthPx: canvas.width,
@@ -258,5 +369,10 @@ export async function preparePdfPages(
   }
 
   await doc.destroy();
-  return pages;
+  const textSpans: TextSpansPayload = {
+    pages: textPages,
+    total_pages: textPages.length,
+    total_chars: textPages.reduce((acc, p) => acc + p.char_count, 0),
+  };
+  return { pages, textSpans };
 }

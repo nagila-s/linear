@@ -4,6 +4,7 @@ const VERCEL_BFF_MAX_BYTES = 4.5 * 1024 * 1024;
 
 export type StartPdfJobOptions = {
   mioloOnly?: boolean;
+  literario?: boolean;
   testRun?: boolean;
   promptOverrides?: Record<string, string>;
 };
@@ -98,11 +99,17 @@ export async function uploadPdfViaPresigned(
   options: StartPdfJobOptions = {},
 ): Promise<{ jobId: string; message?: string }> {
   const mioloOnly = Boolean(options.mioloOnly);
+  const literario = Boolean(options.literario);
   const testRun = Boolean(options.testRun) || hasPromptOverrides(options);
   const initResponse = await fetch("/api/process/upload-init", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ isbn, filename: file.name, miolo_only: mioloOnly }),
+    body: JSON.stringify({
+      isbn,
+      filename: file.name,
+      miolo_only: mioloOnly,
+      literario,
+    }),
   });
   const initPayload = await readBrowserJson<UploadInitPayload & { error?: string }>(
     initResponse,
@@ -140,6 +147,7 @@ export async function uploadPdfViaPresigned(
     token: initPayload.token,
     filename: file.name,
     miolo_only: mioloOnly,
+    literario,
     test_run: testRun,
   };
   if (hasPromptOverrides(options)) {
@@ -189,6 +197,7 @@ export async function uploadPdfToApi(
   form.append("job_type", "linearizar");
   form.append("prompt_version", "v1");
   form.append("miolo_only", options.mioloOnly ? "true" : "false");
+  form.append("literario", options.literario ? "true" : "false");
   const testRun = Boolean(options.testRun) || hasPromptOverrides(options);
   form.append("test_run", testRun ? "true" : "false");
   if (hasPromptOverrides(options)) {
@@ -244,6 +253,7 @@ export async function uploadPdfViaBff(
   formData.append("linearize", "true");
   formData.append("contextualize", "false");
   formData.append("miolo_only", options.mioloOnly ? "true" : "false");
+  formData.append("literario", options.literario ? "true" : "false");
   const testRun = Boolean(options.testRun) || hasPromptOverrides(options);
   formData.append("test_run", testRun ? "true" : "false");
   if (hasPromptOverrides(options)) {

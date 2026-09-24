@@ -185,12 +185,8 @@ Não confunda com "nota" (observação editorial) nem com "paragrafo" (texto exp
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Use "fonte" para referências bibliográficas completas: Autor. Título da obra. Edição. Local: Editora, Ano. Página.
-REMOVA e não registre fontes que sejam apenas:
-- Nomes simples de pessoa sem referência bibliográfica (ex.: "Felipe", "Arquivo da editora", "Acervo pessoal")
-- Bancos de imagens (ex.: "Shutterstock", "Getty Images", "Alamy", "iStock")
-- Créditos fotográficos no formato "Nome/Banco" (ex.: "João Silva/Shutterstock")
-- Créditos editoriais genéricos (ex.: "Acervo da editora", "Reprodução")
-MANTENHA fontes que contenham: autor + obra + ano, ou autor + instituição + publicação.
+Créditos de imagem nunca entram em nenhum campo. Não registre fotógrafo, agência, "Nome/Banco" (ex.: "João Silva/Shutterstock", "ALESSANDRA NOHVAIS/GRUPO VILAVOX"), banco de imagens (Shutterstock, Getty, Alamy, iStock) nem "Acervo da editora" / "Acervo pessoal".
+MANTENHA fontes bibliográficas com autor + obra + ano, ou autor + instituição + publicação.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [IMAGENS]
@@ -235,7 +231,7 @@ Sempre que houver um texto de fonte (referência a autor, livro, página, instit
 
 { "tipo": "fonte", "texto": "FERREZ, Marc. Coleção Instituto Moreira Salles, 1906." }
 
-REMOVA fontes que sejam apenas créditos de banco de imagens (Shutterstock, Getty Images, Acervo da editora, etc.).
+Créditos de imagem não entram: nem como bloco "fonte", nem dentro de "legenda" ou "texto".
 MANTENHA fontes que referenciem autor, livro, página, instituição de pesquisa, periódico ou URL de conteúdo.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

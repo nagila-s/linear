@@ -3,6 +3,9 @@ import re
 from typing import Any
 
 from src.core.config import get_settings
+from src.pipeline.steps.page_completeness import plain_text_from_page_styles
+from src.pipeline.steps.pdf_text_styles import PageTextStyles
+from src.pipeline.steps.style_merge import merge_styles_into_page
 from src.services.prompt_router import CONTENT_PAGE_TYPE, PromptRouter
 from src.worker.utils.logger import get_logger
 
@@ -219,6 +222,37 @@ def _build_dorina_context(
     return "\n\n".join(parts)
 
 
+def _is_literary_cover(content: Any, *, literario: bool, miolo_only: bool) -> bool:
+    if not literario or miolo_only or not isinstance(content, dict):
+        return False
+    return str(content.get("tipo_pagina") or "").strip().lower() == "capa"
+
+
+def _cover_image_id(refs: set[str]) -> str:
+    return min(refs, key=lambda key: int(re.sub(r"\D", "", key) or 0))
+
+
+def _ensure_cover_image(content: dict) -> str:
+    """Garante um bloco imagem na capa e devolve o id usado pela Dorina."""
+    refs, _captions = _extract_image_refs_and_captions(content)
+    if refs:
+        return _cover_image_id(refs)
+    conteudo = content.get("conteudo")
+    if not isinstance(conteudo, list):
+        conteudo = []
+        content["conteudo"] = conteudo
+    conteudo.append(
+        {
+            "tipo": "imagem",
+            "id": "fig1",
+            "legenda": None,
+            "descricao": "[imagem presente]",
+            "contexto_pedagogico": None,
+        }
+    )
+    return "fig1"
+
+
 def _supports_figure_description(content: Any, *, miolo_only: bool = False) -> bool:
     if not isinstance(content, dict):
         return False
@@ -242,11 +276,13 @@ async def run(ctx: dict) -> dict:
     process_version = ctx["process_version"]
     concurrency = max(1, int(ctx.get("linearize_page_concurrency") or 4))
     miolo_only = bool(ctx.get("miolo_only") or getattr(openai, "miolo_only", False))
+    literario = bool(ctx.get("literario") or getattr(openai, "literario", False))
 
     pages = ctx.get("pages", [])
     total_pages = len(pages)
     figures_by_page = ctx.get("figures_by_page", {})
     figure_keys_by_page = ctx.get("figure_keys_by_page", {})
+    text_spans_by_page: dict[int, PageTextStyles] = ctx.get("text_spans_by_page") or {}
     pages_done: dict[int, dict[str, Any]] = await asyncio.to_thread(
         _load_linear_checkpoint,
         storage,
@@ -293,6 +329,7 @@ async def run(ctx: dict) -> dict:
                     and (miolo_only or PromptRouter.supports_figure_description(page_type))
                     and bool(figure_keys)
                 )
+                page_plain_text = plain_text_from_page_styles(text_spans_by_page.get(page_number))
                 if describe_figures:
                     combined = await asyncio.to_thread(
                         openai.linearize_and_extract_context,
@@ -302,6 +339,7 @@ async def run(ctx: dict) -> dict:
                         page_number=page_number,
                         total_pages=total_pages,
                         page_type=page_type,
+                        page_plain_text=page_plain_text,
                     )
                     page_structure = combined["page_structure"]
                     page_contexts = combined.get("figure_contexts", {})
@@ -313,6 +351,7 @@ async def run(ctx: dict) -> dict:
                         page_number=page_number,
                         total_pages=total_pages,
                         page_type=page_type,
+                        page_plain_text=page_plain_text,
                     )
                     page_contexts = {}
         except Exception as exc:
@@ -348,6 +387,14 @@ async def run(ctx: dict) -> dict:
                     pages_done,
                 )
             return
+
+        page_styles = text_spans_by_page.get(page_number)
+        if isinstance(page_structure, dict) and page_styles is not None:
+            page_structure = merge_styles_into_page(
+                page_structure,
+                page_styles,
+                page_number=page_number,
+            )
 
         contexts_by_page[page_number] = page_contexts
         for key, context_text in page_contexts.items():
@@ -393,16 +440,35 @@ async def run(ctx: dict) -> dict:
             return
 
         page_structure = linear_entry["content"]
-        if not _supports_figure_description(page_structure, miolo_only=miolo_only):
+        literary_cover = _is_literary_cover(
+            page_structure,
+            literario=literario,
+            miolo_only=miolo_only,
+        )
+        if literary_cover:
+            page_path = str(page.get("page_storage_path") or "").strip()
+            if not page_path:
+                return
+            cover_id = _ensure_cover_image(page_structure)
+            refs, captions = _extract_image_refs_and_captions(page_structure)
+            targets = [
+                {
+                    "figure_key": cover_id,
+                    "figure_id": None,
+                    "storage_path": page_path,
+                    "source": "page",
+                }
+            ]
+        elif not _supports_figure_description(page_structure, miolo_only=miolo_only):
             return
+        else:
+            refs, captions = _extract_image_refs_and_captions(page_structure)
+            if not refs:
+                return
 
-        refs, captions = _extract_image_refs_and_captions(page_structure)
-        if not refs:
-            return
-
-        page_figures = figures_by_page.get(page_number, [])
+            page_figures = figures_by_page.get(page_number, [])
+            targets = _resolve_targets(refs, page_figures, page)
         page_contexts = contexts_by_page.get(page_number, {})
-        targets = _resolve_targets(refs, page_figures, page)
         if not targets:
             logger.warning(
                 "job=%s page=%s refs=%s sem alvo para Dorina",

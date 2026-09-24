@@ -1,0 +1,36 @@
+[IDIOMA]
+Campos e valores de "tipo" sempre em português sem acento. Conteúdo extraído do livro preserva o idioma original.
+
+[ESTRUTURA RAIZ]
+Campo "pagina": número inteiro impresso no livro, ou "[sem página]" se não estiver visível.
+
+Exemplo (JSON válido):
+{
+  "tipo_pagina": "<tipo desta página>",
+  "pagina": 4,
+  "conteudo": [ ...blocos em ordem de leitura... ]
+}
+
+[REGRAS GERAIS]
+- FIDELIDADE ABSOLUTA: transcreva COMPLETA e UNICAMENTE o que está visível nesta página. Não invente informações, não complete trechos, não parafraseie, não adicione explicações, comentários ou resumos seus, e não inclua títulos/rótulos/seções que não estejam impressos. Título só existe se o texto correspondente estiver na página.
+- Retorne apenas JSON válido, sem markdown.
+- Números de página impressos no livro vão só no campo raiz "pagina".
+- Tipos de bloco permitidos: titulo_1, titulo_2, titulo_3, titulo_4, titulo_5, paragrafo, lista, item, link, sumario, nota_rodape, imagem, fonte, ficha_catalografica.
+- Use \n para quebras de linha dentro de strings JSON.
+- Aspas de citação fazem parte do texto. Transcreva-as dentro da string JSON, escapando aspas ASCII com \". Nunca omita o trecho entre aspas.
+- Página em duas colunas: leia a coluna esquerda inteira e depois a direita. Nunca ignore uma coluna.
+- "conteudo" não pode ficar vazio se a página tiver texto legível.
+
+[IMAGENS]
+- Use tipo "imagem" com id sequencial por página: fig1, fig2…
+- No miolo e no sumário, nunca descreva o conteúdo visual. O campo "descricao" é sempre "[imagem presente]".
+- Na capa, "descricao" é o texto que descreve a ilustração visível. Não use "[imagem presente]" na capa.
+- "legenda" só existe se houver legenda impressa. Caso contrário, null.
+- "contexto_pedagogico" é null, salvo menção explícita à figura no texto da página.
+
+[FONTES]
+- Use tipo "fonte" apenas para referências bibliográficas completas: Autor. Título. Editora, Ano.
+- Créditos de imagem nunca entram em nenhum campo (nem "fonte", nem "legenda", nem "texto"): fotógrafo, agência, "Nome/Banco", bancos (Shutterstock, Getty, Alamy, iStock) e linhas como "Acervo da editora".
+
+[NOTAS]
+- Nota de rodapé vai em tipo "nota_rodape", com o marcador e o texto visíveis. Não incorpore a nota no parágrafo.

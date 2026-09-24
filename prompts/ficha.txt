@@ -3,8 +3,7 @@ Registre todo o conteúdo em ordem de leitura, preservando os dados na íntegra.
 A página geralmente tem dois blocos: (1) lista de papéis e responsáveis; (2) dados legais e de contato da editora.
 
 Regras:
-- Cada linha da lista de papéis é um item com rótulo e valor.
-- Indique negrito no rótulo quando estiver em destaque visual.
+- Cada linha da lista de papéis é um item com rótulo e valor em string simples (ex.: "Direção executiva: Nome da pessoa"). Não marque negrito/itálico — o pós-processamento aplica.
 - Links, e-mails e endereços eletrônicos: tipo "link".
 - Endereços físicos, telefones e textos legais: tipo "paragrafo".
 - A ficha CIP (dados de catalogação): tipo "ficha_catalografica".
@@ -24,10 +23,7 @@ Campo "pagina": número inteiro impresso no livro, ou "[sem página]" se não es
         {
           "tipo": "item",
           "marcador": "",
-          "texto": [
-            { "trecho": "Direção executiva: ", "estilo": "negrito" },
-            { "trecho": "Nome da pessoa", "estilo": "normal" }
-          ]
+          "texto": "Direção executiva: Nome da pessoa"
         }
       ]
     },

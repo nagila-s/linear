@@ -15,6 +15,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       token?: string;
       filename?: string;
       miolo_only?: boolean;
+      literario?: boolean;
       test_run?: boolean;
       prompt_overrides?: Record<string, string>;
       page_count?: number;
@@ -36,6 +37,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         job_type: "linearizar",
         prompt_version: "v1",
         miolo_only: Boolean(body.miolo_only),
+        literario: Boolean(body.literario),
         test_run: Boolean(body.test_run),
         prompt_overrides: body.prompt_overrides ?? null,
         page_count: body.page_count ?? null,

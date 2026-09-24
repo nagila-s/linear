@@ -97,7 +97,7 @@ export async function startServerlessTestJob(
 ): Promise<{ jobId: string; message: string }> {
   const dpi = options.dpi ?? 120;
   const { preparePdfPages } = await import("@/lib/test-pdf-prepare");
-  const pages = await preparePdfPages(file, {
+  const { pages, textSpans } = await preparePdfPages(file, {
     dpi,
     maxPages: 30,
     onProgress: options.onPrepareProgress,
@@ -129,7 +129,7 @@ export async function startServerlessTestJob(
   const jobId = createPayload.jobId;
 
   try {
-    await uploadManifest(jobId, file, pages, options.onUploadProgress);
+    await uploadManifest(jobId, file, pages, textSpans, options.onUploadProgress);
     const enqueueResponse = await fetch(`/api/test-jobs/${jobId}/enqueue`, { method: "POST" });
     const enqueuePayload = await readJsonResponse<{ error?: string; message?: string }>(
       enqueueResponse,
@@ -159,6 +159,11 @@ async function uploadManifest(
   jobId: string,
   file: File,
   pages: PreparedPage[],
+  textSpans: {
+    pages: Array<{ page_number: number; runs: Array<{ text: string; estilo: string }>; char_count: number }>;
+    total_pages: number;
+    total_chars: number;
+  },
   onUploadProgress?: (done: number, total: number) => void,
 ): Promise<void> {
   const assets: Array<{
@@ -170,6 +175,11 @@ async function uploadManifest(
       path: `${jobId}/original.pdf`,
       blob: file,
       contentType: "application/pdf",
+    },
+    {
+      path: `${jobId}/text_spans.json`,
+      blob: new Blob([JSON.stringify(textSpans)], { type: "application/json" }),
+      contentType: "application/json",
     },
   ];
 

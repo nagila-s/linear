@@ -3,6 +3,11 @@ from typing import Any
 
 from src.core.config import get_settings
 from src.pipeline.steps.pdf_images import extract_images_from_pdf
+from src.pipeline.steps.pdf_text_styles import (
+    extract_text_styles_from_pdf,
+    pages_from_payload,
+    pages_to_payload,
+)
 from src.pipeline.steps.preprocess import preprocess_pdf
 
 logger = logging.getLogger(__name__)
@@ -21,6 +26,7 @@ def _save_extract_checkpoint(
     figures: list[dict],
     figures_by_page: dict[int, list[dict]],
     figure_keys_by_page: dict[int, list[str]],
+    text_spans_payload: dict | None = None,
 ) -> None:
     storage.upload_json(
         isbn,
@@ -34,6 +40,7 @@ def _save_extract_checkpoint(
             "figures": figures,
             "figures_by_page": {str(k): v for k, v in figures_by_page.items()},
             "figure_keys_by_page": {str(k): v for k, v in figure_keys_by_page.items()},
+            "text_spans": text_spans_payload or {"pages": [], "total_pages": 0, "total_chars": 0},
         },
     )
 
@@ -94,16 +101,23 @@ def _restore_from_checkpoint(storage: Any, doc: dict) -> dict:
         int(k): v for k, v in figure_keys_raw.items() if str(k).isdigit()
     }
 
+    text_spans_payload = doc.get("text_spans") if isinstance(doc.get("text_spans"), dict) else None
+    text_spans_by_page = pages_from_payload(text_spans_payload)
+
     logger.info(
-        "Reusando extract_checkpoint: pages=%s figures=%s (skip rasterize)",
+        "Reusando extract_checkpoint: pages=%s figures=%s text_pages=%s (skip rasterize)",
         len(page_results),
         len(figures),
+        len(text_spans_by_page),
     )
     return {
         "pages": sorted(page_results, key=lambda p: int(p["page_number"])),
         "figures": figures,
         "figures_by_page": figures_by_page,
         "figure_keys_by_page": figure_keys_by_page,
+        "text_spans_by_page": text_spans_by_page,
+        "text_spans_payload": text_spans_payload
+        or pages_to_payload(list(text_spans_by_page.values())),
     }
 
 
@@ -129,10 +143,22 @@ async def run(ctx: dict) -> dict:
     if cached is not None:
         try:
             restored = _restore_from_checkpoint(storage, cached)
+            # Checkpoint antigo sem text_spans: força re-extração.
+            if not restored.get("text_spans_by_page") and not (
+                isinstance(cached.get("text_spans"), dict)
+                and isinstance(cached["text_spans"].get("pages"), list)
+            ):
+                raise ValueError("extract_checkpoint sem text_spans")
             ctx["pages"] = restored["pages"]
             ctx["figures"] = restored["figures"]
             ctx["figures_by_page"] = restored["figures_by_page"]
             ctx["figure_keys_by_page"] = restored["figure_keys_by_page"]
+            ctx["text_spans_by_page"] = restored.get("text_spans_by_page") or {}
+            ctx["text_spans_payload"] = restored.get("text_spans_payload") or {
+                "pages": [],
+                "total_pages": 0,
+                "total_chars": 0,
+            }
             return ctx
         except Exception as exc:
             logger.warning(
@@ -148,6 +174,9 @@ async def run(ctx: dict) -> dict:
         render_dpi=dpi,
         render_fallback_dpi=dpi,
     )
+    text_style_pages = extract_text_styles_from_pdf(pdf_bytes)
+    text_spans_payload = pages_to_payload(text_style_pages)
+    text_spans_by_page = {page.page_number: page for page in text_style_pages}
     # PDF em bytes já não é necessário após extract; libera referência cedo.
     del pdf_bytes
 
@@ -242,10 +271,13 @@ async def run(ctx: dict) -> dict:
         figures=figures,
         figures_by_page=figures_by_page,
         figure_keys_by_page=figure_keys_by_page,
+        text_spans_payload=text_spans_payload,
     )
 
     ctx["pages"] = page_results
     ctx["figures"] = figures
     ctx["figures_by_page"] = figures_by_page
     ctx["figure_keys_by_page"] = figure_keys_by_page
+    ctx["text_spans_by_page"] = text_spans_by_page
+    ctx["text_spans_payload"] = text_spans_payload
     return ctx
