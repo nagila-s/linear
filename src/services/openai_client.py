@@ -383,13 +383,17 @@ class OpenAIService:
             if parsed is not None:
                 return parsed
             raise IntegrationError(
-                "OpenAI interrompeu por content_filter na linearizacao."
+                "A IA recusou esta página por filtro de conteúdo. "
+                "As outras páginas seguem; num novo envio só esta página é reprocessada."
             )
 
         if not allow_continue or not content or not str(content).strip():
             if parsed is not None:
                 return parsed
-            raise IntegrationError("Resposta vazia na linearizacao.")
+            raise IntegrationError(
+                "A IA respondeu vazio nesta página. "
+                "As outras páginas seguem; num novo envio só esta página é reprocessada."
+            )
 
         try:
             continued = self._continue_truncated_json(
@@ -1076,7 +1080,10 @@ class OpenAIService:
                 use_reasoning=reasoning,
             )
             if not content:
-                raise IntegrationError("OpenAI retornou resposta vazia.")
+                raise IntegrationError(
+                    "A IA respondeu vazio nesta página. "
+                    "As outras páginas seguem; num novo envio só esta página é reprocessada."
+                )
             return content
 
         try:
@@ -1121,7 +1128,10 @@ class OpenAIService:
             )
 
         if not content:
-            raise IntegrationError("OpenAI retornou resposta vazia.")
+            raise IntegrationError(
+                "A IA respondeu vazio nesta página. "
+                "As outras páginas seguem; num novo envio só esta página é reprocessada."
+            )
         return content
 
     def _reasoning_kwargs(self, *, use_reasoning: bool) -> Dict[str, Any]:
@@ -1256,12 +1266,16 @@ class OpenAIService:
             response.raise_for_status()
             raw = (response.text or "").strip()
             if not raw:
-                raise IntegrationError("OpenAI responses API (HTTP) retornou corpo vazio.")
+                raise IntegrationError(
+                    "A IA respondeu vazio nesta página. "
+                    "As outras páginas seguem; num novo envio só esta página é reprocessada."
+                )
             try:
                 data = response.json()
             except ValueError as exc:
                 raise IntegrationError(
-                    f"OpenAI responses API (HTTP) retornou JSON invalido: {raw[:300]}"
+                    "A IA devolveu um texto que não é JSON válido. "
+                    "As outras páginas seguem. Num novo envio, só as páginas com falha são reprocessadas."
                 ) from exc
         status = str(data.get("status") or "").lower()
         if status == "incomplete":
@@ -1329,7 +1343,8 @@ class OpenAIService:
                 exc,
                 preview,
             )
+            where = f" A página {page_number} ficou sem transcrição." if page_number is not None else ""
             raise IntegrationError(
-                f"A IA retornou JSON invalido na linearizacao{page_hint}. "
-                "Reprocesse o job; se persistir, revise o prompt da pagina."
+                "A IA devolveu um texto que não é JSON válido."
+                f"{where} As outras páginas seguem. Num novo envio, só as páginas com falha são reprocessadas."
             ) from exc

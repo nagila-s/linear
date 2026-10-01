@@ -181,18 +181,60 @@ export function mapJobToProcessStatus(job: FastApiJob): {
   };
 }
 
-/** Erros crus do Python (json.loads em corpo vazio) nao ajudam na UI. */
+/** Traduz erros crus do worker para o que a pessoa precisa saber na tela. */
 function humanizeWorkerError(raw: string): string {
   const detail = raw.trim();
   if (!detail) return "";
-  if (/expecting value:\s*line 1 column 1/i.test(detail) || detail === "Expecting value: line 1 column 1 (char 0)") {
+  const lower = detail.toLowerCase();
+
+  if (
+    /expecting value:\s*line 1 column 1/.test(lower) ||
+    lower.includes("jsondecodeerror") ||
+    lower.includes("storage respondeu vazio")
+  ) {
     return (
-      "O worker recebeu resposta vazia ao ler JSON (OpenAI/Dorina/storage). " +
-      "Nao e falha do upload na tela principal — tente de novo; se persistir, confira as chaves e logs do worker na AWS."
+      "O processamento parou ao gravar o resultado: o storage respondeu vazio. " +
+      "As páginas já transcritas ficam salvas e não são cobradas de novo. Não é falha do envio do PDF."
     );
   }
-  if (/json\.decoder\.JSONDecodeError/i.test(detail)) {
-    return `Falha ao interpretar JSON no worker: ${detail.slice(0, 240)}`;
+  if (
+    lower.includes("retornou corpo vazio") ||
+    lower.includes("respondeu com corpo vazio") ||
+    lower.includes("resposta vazia na linearizacao") ||
+    lower.includes("retornou resposta vazia")
+  ) {
+    return (
+      "A IA respondeu vazio nesta página. As outras páginas seguem. " +
+      "Num novo envio, só as páginas com falha são reprocessadas."
+    );
+  }
+  if (
+    lower.includes("server disconnected") ||
+    lower.includes("connection reset") ||
+    lower.includes("connection_transient") ||
+    lower.includes("network_transient")
+  ) {
+    return "A conexão caiu no meio do processamento. Tente de novo: as páginas já concluídas não são reenviadas à IA.";
+  }
+  if (lower.includes("timeout")) {
+    return "O serviço demorou demais e a conexão estourou. Tente de novo: as páginas já concluídas não são reenviadas à IA.";
+  }
+  if (lower.includes("content_filter")) {
+    return "A IA recusou uma página por filtro de conteúdo. As outras páginas seguem; num novo envio só a página recusada é reprocessada.";
+  }
+  if (lower.includes("json invalido") || lower.includes("json inválido")) {
+    const page = detail.match(/p[aá]gina\s+(\d+)/i)?.[1];
+    const where = page ? ` A página ${page} ficou sem transcrição.` : "";
+    return (
+      `A IA devolveu um texto que não é JSON válido.${where} ` +
+      "As outras páginas seguem. Num novo envio, só as páginas com falha são reprocessadas."
+    );
+  }
+  if (lower.includes("worker encerrado")) {
+    return "O processamento foi interrompido no servidor. Tente de novo: as páginas já concluídas não são reenviadas à IA.";
+  }
+  if (lower.includes("upstream_5xx") || lower.includes("upstream_4xx")) {
+    return "A descrição das figuras falhou porque o serviço de imagens respondeu com erro. O texto das páginas é mantido.";
   }
   return detail;
 }

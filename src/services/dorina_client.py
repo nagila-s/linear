@@ -69,23 +69,38 @@ class DorinaService:
                 timeout=self.settings.dorina_timeout_seconds,
             )
         except requests.Timeout as exc:
-            raise IntegrationError("Dorina timeout_transient_error") from exc
+            raise IntegrationError(
+                "A descrição da figura demorou demais e a conexão estourou. O texto da página é mantido."
+            ) from exc
         except (requests.ConnectionError, ConnectionResetError, OSError) as exc:
-            raise IntegrationError(f"Dorina connection_transient_error: {exc}") from exc
+            raise IntegrationError(
+                "A conexão com o serviço de descrição de figuras caiu. O texto da página é mantido."
+            ) from exc
         except requests.RequestException as exc:
-            raise IntegrationError("Dorina network_transient_error") from exc
+            raise IntegrationError(
+                "A conexão com o serviço de descrição de figuras caiu. O texto da página é mantido."
+            ) from exc
         if response.status_code >= 400:
             if response.status_code >= 500:
-                raise IntegrationError(f"Dorina upstream_5xx_error ({response.status_code}): {response.text[:500]}")
-            raise IntegrationError(f"Dorina upstream_4xx_error ({response.status_code}): {response.text[:500]}")
+                raise IntegrationError(
+                    f"A descrição da figura falhou: o serviço de imagens respondeu com erro {response.status_code}. "
+                    "O texto da página é mantido."
+                )
+            raise IntegrationError(
+                f"A descrição da figura foi recusada pelo serviço de imagens (erro {response.status_code}). "
+                "O texto da página é mantido."
+            )
         raw = (response.text or "").strip()
         if not raw:
-            raise IntegrationError("Dorina respondeu com corpo vazio.")
+            raise IntegrationError(
+                "A descrição da figura falhou: o serviço de imagens respondeu vazio. O texto da página é mantido."
+            )
         try:
             data = response.json()
         except ValueError as exc:
             raise IntegrationError(
-                f"Dorina respondeu JSON invalido: {raw[:300]}"
+                "A descrição da figura falhou: o serviço de imagens devolveu um texto que não é JSON. "
+                "O texto da página é mantido."
             ) from exc
         if not isinstance(data, dict):
             raise IntegrationError(f"Dorina resposta invalida: {str(data)[:300]}")
