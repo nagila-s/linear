@@ -11,6 +11,23 @@ from src.services.pdf_paths import is_local_storage_path, resolve_local_pdf_path
 from src.utils.json_codec import normalize_unicode_in_json
 
 
+_STORAGE_EMPTY_RESPONSE = (
+    "O processamento parou ao gravar o resultado: o storage respondeu vazio. "
+    "As páginas já transcritas ficam salvas e não são cobradas de novo. Não é falha do envio do PDF."
+)
+
+
+def _storage_call(action, *, empty_message: str = _STORAGE_EMPTY_RESPONSE):
+    try:
+        return action()
+    except json.JSONDecodeError as exc:
+        raise IntegrationError(empty_message) from exc
+    except Exception as exc:
+        if "expecting value: line 1 column 1" in str(exc).lower():
+            raise IntegrationError(empty_message) from exc
+        raise
+
+
 class StorageService:
     def __init__(self) -> None:
         settings = get_settings()
@@ -21,28 +38,34 @@ class StorageService:
 
     def upload_pdf(self, isbn: str, content: bytes, process_version: str = "v1") -> str:
         path = f"{isbn}/{process_version}/original.pdf"
-        self.client.storage.from_(self.settings.bucket_pdf).upload(
-            path=path,
-            file=content,
-            file_options={"content-type": "application/pdf", "upsert": "true"},
+        _storage_call(
+            lambda: self.client.storage.from_(self.settings.bucket_pdf).upload(
+                path=path,
+                file=content,
+                file_options={"content-type": "application/pdf", "upsert": "true"},
+            )
         )
         return f"{self.settings.bucket_pdf}/{path}"
 
     def upload_page(self, isbn: str, page_name: str, content: bytes, process_version: str = "v1") -> str:
         path = f"{isbn}/{process_version}/{page_name}"
-        self.client.storage.from_(self.settings.bucket_pages).upload(
-            path=path,
-            file=content,
-            file_options={"content-type": "image/png", "upsert": "true"},
+        _storage_call(
+            lambda: self.client.storage.from_(self.settings.bucket_pages).upload(
+                path=path,
+                file=content,
+                file_options={"content-type": "image/png", "upsert": "true"},
+            )
         )
         return f"{self.settings.bucket_pages}/{path}"
 
     def upload_figure(self, isbn: str, page_folder: str, figure_name: str, content: bytes, process_version: str = "v1") -> str:
         path = f"{isbn}/{process_version}/{page_folder}/{figure_name}"
-        self.client.storage.from_(self.settings.bucket_figures).upload(
-            path=path,
-            file=content,
-            file_options={"content-type": "image/png", "upsert": "true"},
+        _storage_call(
+            lambda: self.client.storage.from_(self.settings.bucket_figures).upload(
+                path=path,
+                file=content,
+                file_options={"content-type": "image/png", "upsert": "true"},
+            )
         )
         return f"{self.settings.bucket_figures}/{path}"
 
@@ -60,10 +83,12 @@ class StorageService:
         body = json.dumps(normalized, ensure_ascii=False, indent=indent, default=str)
         if indent is not None:
             body = body + "\n"
-        self.client.storage.from_(self.settings.bucket_json).upload(
-            path=path,
-            file=body.encode("utf-8"),
-            file_options={"content-type": "application/json", "upsert": "true"},
+        _storage_call(
+            lambda: self.client.storage.from_(self.settings.bucket_json).upload(
+                path=path,
+                file=body.encode("utf-8"),
+                file_options={"content-type": "application/json", "upsert": "true"},
+            )
         )
         return f"{self.settings.bucket_json}/{path}"
 
@@ -72,7 +97,10 @@ class StorageService:
     ) -> Dict[str, Any] | None:
         path = f"{isbn}/{process_version}/{job_id}/{file_name}"
         try:
-            data = self.client.storage.from_(self.settings.bucket_json).download(path)
+            data = _storage_call(
+                lambda: self.client.storage.from_(self.settings.bucket_json).download(path),
+                empty_message="Não foi possível ler um arquivo no storage: o serviço respondeu vazio.",
+            )
         except Exception:
             return None
         if not data:
