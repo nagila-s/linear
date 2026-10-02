@@ -8,7 +8,7 @@ from supabase import create_client
 from src.core.config import get_settings
 from src.core.errors import IntegrationError
 from src.services.pdf_paths import is_local_storage_path, resolve_local_pdf_path
-from src.utils.json_codec import normalize_unicode_in_json
+from src.utils.json_codec import normalize_unicode_in_json, sanitize_json_for_postgres
 
 
 _STORAGE_EMPTY_RESPONSE = (
@@ -107,7 +107,7 @@ class StorageService:
             return None
         raw: bytes = data if isinstance(data, bytes) else io.BytesIO(data).read()
         try:
-            return json.loads(raw.decode("utf-8"))
+            return sanitize_json_for_postgres(json.loads(raw.decode("utf-8")))
         except (json.JSONDecodeError, UnicodeDecodeError):
             return None
 

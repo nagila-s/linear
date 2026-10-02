@@ -16,6 +16,7 @@ from src.core.config import get_settings
 from src.pipeline.steps.page_completeness import plain_text_from_page_styles
 from src.pipeline.steps.pdf_text_styles import extract_text_styles_from_pdf, pages_to_payload
 from src.pipeline.steps.preprocess import preprocess_pdf
+from src.pipeline.steps.quote_regions import restore_quotes_from_page_styles
 from src.pipeline.steps.style_merge import merge_styles_into_page
 from src.services.openai_client import OpenAIService
 
@@ -94,6 +95,12 @@ def linearize_pdf(
                 page_plain_text=plain_text_from_page_styles(styles),
             )
             if isinstance(content, dict) and styles is not None:
+                content = restore_quotes_from_page_styles(
+                    content,
+                    styles,
+                    pdf_text=plain_text_from_page_styles(styles),
+                    literary=literario,
+                ) or content
                 content = merge_styles_into_page(content, styles, page_number=page.page_number)
             return {"page_number": page.page_number, "content": content}
 

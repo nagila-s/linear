@@ -35,7 +35,7 @@ Se a página for a ficha catalográfica (CIP), créditos de produção ou dados 
 Para capítulo, texto corrido, nota, figura ou contracapa:
 - "tipo_pagina": "conteudo" no miolo e "contracapa" na contracapa.
 - Títulos em titulo_1 a titulo_5, na hierarquia visível.
-- Texto corrido em "paragrafo". Preserve aspas de citação.
+- Texto corrido em "paragrafo". Preserve aspas de citação (“ ” ou "). Trechos longos entre aspas entram por extenso, com \n nas quebras de verso; nunca omita o miolo da citação.
 - Nota de rodapé em "nota_rodape".
 - Figura em "imagem". No miolo, "descricao" é sempre "[imagem presente]".
 

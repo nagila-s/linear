@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "node --import tsx --test lib/prompt-router.test.ts lib/test-job-status.test.ts"
+    "test": "node --import tsx --test lib/prompt-router.test.ts lib/test-job-status.test.ts lib/font-style.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",

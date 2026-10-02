@@ -5,6 +5,7 @@ from typing import Any
 from src.core.config import get_settings
 from src.pipeline.steps.page_completeness import plain_text_from_page_styles
 from src.pipeline.steps.pdf_text_styles import PageTextStyles
+from src.pipeline.steps.quote_regions import restore_quotes_from_page_styles
 from src.pipeline.steps.style_merge import merge_styles_into_page
 from src.services.prompt_router import CONTENT_PAGE_TYPE, PromptRouter
 from src.worker.utils.logger import get_logger
@@ -390,6 +391,12 @@ async def run(ctx: dict) -> dict:
 
         page_styles = text_spans_by_page.get(page_number)
         if isinstance(page_structure, dict) and page_styles is not None:
+            page_structure = restore_quotes_from_page_styles(
+                page_structure,
+                page_styles,
+                pdf_text=plain_text_from_page_styles(page_styles),
+                literary=literario,
+            ) or page_structure
             page_structure = merge_styles_into_page(
                 page_structure,
                 page_styles,

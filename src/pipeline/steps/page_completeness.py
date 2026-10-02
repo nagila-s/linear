@@ -20,6 +20,15 @@ _TEXT_KEYS = frozenset(
         "titulo_boxe",
         "titulo_tabela",
         "cabecalho",
+        "termo",
+        "valor",
+        "legenda",
+        "fonte",
+        "titulo_1",
+        "titulo_2",
+        "titulo_3",
+        "titulo_4",
+        "titulo_5",
     }
 )
 
@@ -212,6 +221,22 @@ def _last_editorial_snippet(node: Any) -> str:
     return found
 
 
+def _quote_depth(text: str) -> int:
+    depth = 0
+    for ch in text or "":
+        if ch in "\u201c\u00ab":
+            depth += 1
+        elif ch in "\u201d\u00bb":
+            depth = max(0, depth - 1)
+        elif ch == '"':
+            depth = 1 - depth
+    return depth
+
+
+def _unclosed_quotes(text: str) -> bool:
+    return _quote_depth(text) > 0
+
+
 def looks_cut_mid_sentence(page_structure: dict[str, Any]) -> bool:
     """True se o último texto parece cortado no meio (sem pontuação final)."""
     snippet = _last_editorial_snippet(page_structure)
@@ -232,6 +257,8 @@ def _text_looks_cut(value: str) -> bool:
     tail = (value or "").rstrip()
     if len(tail) < 30:
         return False
+    if _unclosed_quotes(tail):
+        return True
     if tail[-1].isalpha() and tail[-1].islower():
         return True
     if tail.endswith(("-", "—", ",", ";", ":", " e", " o", " a")):
@@ -293,11 +320,21 @@ def expand_cut_texts_from_plain(
                 window = window[: max(len(value), 40) + m.start()]
                 break
         min_keep = max(len(value), 80)
-        for sep in ("\n\n", ".\n", "? ", "! ", ". "):
-            pos = window.rfind(sep)
-            if pos >= min_keep:
-                window = window[: pos + (1 if sep.startswith(".") else len(sep))]
-                break
+        if _unclosed_quotes(value):
+            search_from = min(len(value), min_keep)
+            for closer in ("\u201d", "\u00bb", '"'):
+                close_at = window.find(closer, search_from)
+                if close_at >= 0:
+                    window = window[: close_at + 1]
+                    return window.strip() or value
+        if not _unclosed_quotes(window):
+            for sep in ("\n\n", ".\n", "? ", "! ", ". "):
+                pos = window.rfind(sep)
+                if pos >= min_keep:
+                    if _unclosed_quotes(window[:pos]):
+                        continue
+                    window = window[: pos + (1 if sep.startswith(".") else len(sep))]
+                    break
         return window.strip() or value
 
     def walk(node: Any) -> Any:

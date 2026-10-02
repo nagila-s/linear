@@ -125,6 +125,28 @@ class PageCompletenessTests(unittest.TestCase):
         self.assertIn("companheiros", text)
         self.assertGreater(len(text), 100)
 
+    def test_expand_cut_does_not_stop_inside_unclosed_quote(self) -> None:
+        from src.pipeline.steps.page_completeness import expand_cut_texts_from_plain
+
+        plain = (
+            '\u201cPrimeira frase do excerto. Segunda frase continua o poema '
+            "sem fechar ainda. Terceira frase fecha a citacao longa.\u201d "
+            "Pergunta da atividade depois."
+        )
+        page = {
+            "conteudo": [
+                {
+                    "tipo": "titulo_4",
+                    "texto": "\u201cPrimeira frase do excerto. Segunda frase continua",
+                }
+            ]
+        }
+        expanded = expand_cut_texts_from_plain(page, plain)
+        assert expanded is not None
+        text = expanded["conteudo"][0]["texto"]
+        self.assertIn("Terceira frase", text)
+        self.assertIn("\u201d", text)
+
 
 if __name__ == "__main__":
     unittest.main()

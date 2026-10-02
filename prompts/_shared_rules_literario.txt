@@ -17,7 +17,9 @@ Exemplo (JSON válido):
 - Números de página impressos no livro vão só no campo raiz "pagina".
 - Tipos de bloco permitidos: titulo_1, titulo_2, titulo_3, titulo_4, titulo_5, paragrafo, lista, item, link, sumario, nota_rodape, imagem, fonte, ficha_catalografica.
 - Use \n para quebras de linha dentro de strings JSON.
-- Aspas de citação fazem parte do texto. Transcreva-as dentro da string JSON, escapando aspas ASCII com \". Nunca omita o trecho entre aspas.
+- Aspas de citação fazem parte do texto. Transcreva-as dentro da string JSON. Prefira aspas tipográficas (“ ”) no valor; se usar aspas ASCII, escape com \". Nunca omita o trecho entre aspas.
+- CITAÇÕES E EXCERTOS: qualquer trecho entre aspas — tipográficas (“ ”) OU gráficas grandes nas bordas do bloco — deve ser transcrito POR EXTENSO, inclusive poemas e prosa de várias linhas. Use "titulo_4" para o bloco citado quando a página marcar um excerto; no miolo literário, um "paragrafo" com o texto completo também vale. Nunca resuma, corte no meio nem substitua por "[trecho omitido]".
+- Use \n para quebras de linha dentro de strings JSON. Nunca insira quebras de linha literais dentro de uma string.
 - Página em duas colunas: leia a coluna esquerda inteira e depois a direita. Nunca ignore uma coluna.
 - "conteudo" não pode ficar vazio se a página tiver texto legível.
 

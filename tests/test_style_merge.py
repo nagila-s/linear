@@ -11,7 +11,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import fitz
+try:
+    import fitz
+except ImportError:
+    fitz = None
 
 from src.pipeline.steps.pdf_text_styles import (
     PageTextStyles,
@@ -71,9 +74,14 @@ class ClassifyFontStyleTests(unittest.TestCase):
         self.assertEqual(classify_font_style(0, "ABCDEF+MinionPro-Bold"), "negrito")
         self.assertEqual(classify_font_style(0, "Times-Italic"), "italico")
         self.assertEqual(classify_font_style(0, "Arial-BoldItalic"), "negrito_italico")
+        self.assertEqual(classify_font_style(0, "heit"), "italico")
+        self.assertEqual(classify_font_style(0, "ABCDEF+MinionStd-It"), "italico")
+        self.assertEqual(classify_font_style(0, "Times"), "normal")
+        self.assertEqual(classify_font_style(0, "hebo"), "negrito")
 
 
 class ExtractTextStylesTests(unittest.TestCase):
+    @unittest.skipUnless(fitz, "PyMuPDF nao instalado")
     def test_extract_bold_italic_quotes(self) -> None:
         pdf = _make_styled_pdf()
         pages = extract_text_styles_from_pdf(pdf)
@@ -98,6 +106,7 @@ class ExtractTextStylesTests(unittest.TestCase):
         compact = "".join(ch for ch in full if not ch.isspace())
         self.assertIn("conhecimento", compact.lower())
 
+    @unittest.skipUnless(fitz, "PyMuPDF nao instalado")
     def test_payload_roundtrip(self) -> None:
         pdf = _make_styled_pdf()
         pages = extract_text_styles_from_pdf(pdf)
@@ -106,6 +115,7 @@ class ExtractTextStylesTests(unittest.TestCase):
         self.assertIn(1, restored)
         self.assertEqual(restored[1].char_count, pages[0].char_count)
 
+    @unittest.skipUnless(fitz, "PyMuPDF nao instalado")
     def test_scanned_empty(self) -> None:
         pages = extract_text_styles_from_pdf(_empty_text_pdf())
         self.assertEqual(len(pages), 1)
@@ -429,8 +439,119 @@ class JsonCodecQuoteTests(unittest.TestCase):
         parsed = parse_llm_json(raw)
         self.assertEqual(parsed["conteudo"][0]["texto"], 'Pergunte: "Todos usaram?"')
 
+    def test_literal_newlines_in_json_string(self) -> None:
+        body = "\n".join(f"verso {i} do poema citado" for i in range(1, 9))
+        raw = (
+            '{"tipo_pagina":"conteudo","pagina":1,"conteudo":['
+            '{"tipo":"titulo_4","texto":"\u201c' + body + '\u201d"},'
+            '{"tipo":"paragrafo","texto":"DEPOIS"}]}'
+        )
+        parsed = parse_llm_json(raw)
+        blocos = parsed["conteudo"]
+        self.assertEqual(len(blocos), 2)
+        self.assertIn("verso 1", blocos[0]["texto"])
+        self.assertIn("verso 8", blocos[0]["texto"])
+        self.assertEqual(blocos[1]["texto"], "DEPOIS")
+
+    def test_prefers_parse_with_more_editorial_text(self) -> None:
+        raw = (
+            '{"tipo_pagina":"conteudo","pagina":1,"conteudo":['
+            '{"tipo":"paragrafo","texto":"Trecho curto."},'
+            '{"tipo":"titulo_4","texto":"Poema longo com muitas linhas '
+            + " ".join(f"verso{i}" for i in range(12))
+            + '"}]}'
+        )
+        parsed = parse_llm_json(raw)
+        joined = " ".join(
+            b["texto"] if isinstance(b["texto"], str) else "" for b in parsed["conteudo"]
+        )
+        self.assertIn("verso11", joined)
+
+
+class EnunciadoAndOrphanStyleTests(unittest.TestCase):
+    def test_merge_italic_in_enunciado(self) -> None:
+        styles = PageTextStyles(
+            page_number=1,
+            runs=[
+                TextRun("Leia o trecho. A palavra ", "normal"),
+                TextRun("liberdade", "italico"),
+                TextRun(" aparece no manifesto.", "normal"),
+            ],
+            char_count=0,
+        )
+        styles.char_count = sum(len(r.text) for r in styles.runs)
+        page = {
+            "tipo_pagina": "conteudo",
+            "pagina": 1,
+            "conteudo": [
+                {
+                    "tipo": "atividade",
+                    "enunciado": "Leia o trecho. A palavra liberdade aparece no manifesto.",
+                }
+            ],
+        }
+        merged = merge_styles_into_page(page, styles, page_number=1)
+        texto = merged["conteudo"][0]["enunciado"]
+        self.assertIsInstance(texto, list)
+        self.assertIn("italico", [s["estilo"] for s in texto])
+
+    def test_orphan_italic_without_sequential_cursor(self) -> None:
+        styles = PageTextStyles(
+            page_number=1,
+            runs=[
+                TextRun("Introducao longa sobre o tema da aula de hoje. ", "normal"),
+                TextRun("epistemologia", "italico"),
+                TextRun(" no final da pagina.", "normal"),
+            ],
+            char_count=0,
+        )
+        styles.char_count = sum(len(r.text) for r in styles.runs)
+        page = {
+            "tipo_pagina": "conteudo",
+            "pagina": 1,
+            "conteudo": [
+                {"tipo": "paragrafo", "texto": "Outro bloco antes."},
+                {"tipo": "paragrafo", "texto": "Depois vem epistemologia no final da pagina."},
+            ],
+        }
+        merged = merge_styles_into_page(page, styles, page_number=1)
+        segundo = merged["conteudo"][1]["texto"]
+        self.assertIsInstance(segundo, list)
+        self.assertIn("italico", [s["estilo"] for s in segundo])
+
+    def test_circulado_survives_italic_overlay(self) -> None:
+        styles = PageTextStyles(
+            page_number=1,
+            runs=[
+                TextRun("Assinale a alternativa ", "normal"),
+                TextRun("A", "italico"),
+                TextRun(" correta.", "normal"),
+            ],
+            char_count=0,
+        )
+        styles.char_count = sum(len(r.text) for r in styles.runs)
+        page = {
+            "tipo_pagina": "conteudo",
+            "pagina": 1,
+            "conteudo": [
+                {
+                    "tipo": "paragrafo",
+                    "texto": [
+                        {"trecho": "Assinale a alternativa ", "estilo": "normal"},
+                        {"trecho": "A", "estilo": "circulado"},
+                        {"trecho": " correta.", "estilo": "normal"},
+                    ],
+                }
+            ],
+        }
+        merged = merge_styles_into_page(page, styles, page_number=1)
+        texto = merged["conteudo"][0]["texto"]
+        circled = [s for s in texto if s.get("estilo") == "circulado"]
+        self.assertEqual(circled[0]["trecho"], "A")
+
 
 class EndToEndExtractMergeTests(unittest.TestCase):
+    @unittest.skipUnless(fitz, "PyMuPDF nao instalado")
     def test_pdf_extract_then_merge(self) -> None:
         pdf = _make_styled_pdf()
         pages = extract_text_styles_from_pdf(pdf)
