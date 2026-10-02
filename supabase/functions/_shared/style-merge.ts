@@ -25,6 +25,17 @@ const STYLE_KEYS = new Set([
   "titulo_boxe",
   "titulo_tabela",
   "cabecalho",
+  "titulo",
+  "titulo_1",
+  "titulo_2",
+  "titulo_3",
+  "titulo_4",
+  "titulo_5",
+  "enunciado",
+  "termo",
+  "valor",
+  "legenda",
+  "fonte",
 ]);
 
 const FONT_STYLES = new Set(["normal", "negrito", "italico", "negrito_italico"]);
@@ -52,11 +63,24 @@ const MIN_FUZZY_NEEDLE = 4;
 const MIN_SCANNED_CHARS = 20;
 
 const BOLD_NAME_RE = /(bold|black|heavy|semibold|demi)/i;
-const ITALIC_NAME_RE = /(italic|oblique)/i;
+const ITALIC_NAME_RE = /(italic|oblique|kursiv|cursive|(?<![a-z])ital(?![a-z]))/i;
+const ITALIC_SUFFIX_RE = /[,+\-_](it|i)(?:mt|std)?$/i;
+const ITALIC_SHORT = new Set(["heit", "hebi", "tito", "tibo", "coui", "cobo"]);
+const BOLD_SHORT = new Set(["hebo", "hebi", "tibo", "cobo"]);
+
+function fontBasename(name: string): string {
+  const raw = (name || "").trim();
+  const plus = raw.lastIndexOf("+");
+  return plus >= 0 ? raw.slice(plus + 1) : raw;
+}
 
 export function classifyFontStyleFromName(fontName: string): string {
-  const bold = BOLD_NAME_RE.test(fontName || "");
-  const italic = ITALIC_NAME_RE.test(fontName || "");
+  const base = fontBasename(fontName);
+  const bold = BOLD_SHORT.has(base.toLowerCase()) || BOLD_NAME_RE.test(base);
+  const italic =
+    ITALIC_SHORT.has(base.toLowerCase()) ||
+    ITALIC_NAME_RE.test(base) ||
+    ITALIC_SUFFIX_RE.test(base);
   if (bold && italic) return "negrito_italico";
   if (bold) return "negrito";
   if (italic) return "italico";
@@ -266,6 +290,137 @@ function segmentsFromStyles(
   return segments;
 }
 
+type Opcode = {
+  tag: "equal" | "replace" | "insert" | "delete";
+  i1: number;
+  i2: number;
+  j1: number;
+  j2: number;
+};
+
+function longestMatch(
+  a: string,
+  b: string,
+  alo: number,
+  ahi: number,
+  blo: number,
+  bhi: number,
+): { i: number; j: number; size: number } {
+  let bestI = alo;
+  let bestJ = blo;
+  let bestSize = 0;
+  const jFor: Record<string, number[]> = {};
+  for (let j = blo; j < bhi; j++) {
+    const ch = b[j];
+    (jFor[ch] ||= []).push(j);
+  }
+  let j2len: Record<number, number> = {};
+  for (let i = alo; i < ahi; i++) {
+    const newj2len: Record<number, number> = {};
+    for (const j of jFor[a[i]] || []) {
+      if (j < blo) continue;
+      if (j >= bhi) break;
+      const k = (j2len[j - 1] || 0) + 1;
+      newj2len[j] = k;
+      if (k > bestSize) {
+        bestI = i - k + 1;
+        bestJ = j - k + 1;
+        bestSize = k;
+      }
+    }
+    j2len = newj2len;
+  }
+  return { i: bestI, j: bestJ, size: bestSize };
+}
+
+function matchingBlocks(a: string, b: string): Array<{ i: number; j: number; size: number }> {
+  const queue: Array<[number, number, number, number]> = [[0, a.length, 0, b.length]];
+  const matches: Array<{ i: number; j: number; size: number }> = [];
+  while (queue.length) {
+    const [alo, ahi, blo, bhi] = queue.pop()!;
+    const { i, j, size } = longestMatch(a, b, alo, ahi, blo, bhi);
+    if (size <= 0) continue;
+    matches.push({ i, j, size });
+    if (alo < i && blo < j) queue.push([alo, i, blo, j]);
+    if (i + size < ahi && j + size < bhi) queue.push([i + size, ahi, j + size, bhi]);
+  }
+  matches.sort((x, y) => x.i - y.i || x.j - y.j);
+  const collapsed: Array<{ i: number; j: number; size: number }> = [];
+  for (const m of matches) {
+    const last = collapsed[collapsed.length - 1];
+    if (last && last.i + last.size === m.i && last.j + last.size === m.j) {
+      last.size += m.size;
+    } else {
+      collapsed.push({ ...m });
+    }
+  }
+  collapsed.push({ i: a.length, j: b.length, size: 0 });
+  return collapsed;
+}
+
+function getOpcodes(a: string, b: string): Opcode[] {
+  const blocks = matchingBlocks(a, b);
+  const ops: Opcode[] = [];
+  let i = 0;
+  let j = 0;
+  for (const m of blocks) {
+    if (i < m.i || j < m.j) {
+      let tag: Opcode["tag"] = "replace";
+      if (i === m.i) tag = "insert";
+      else if (j === m.j) tag = "delete";
+      ops.push({ tag, i1: i, i2: m.i, j1: j, j2: m.j });
+    }
+    if (m.size) {
+      ops.push({ tag: "equal", i1: m.i, i2: m.i + m.size, j1: m.j, j2: m.j + m.size });
+    }
+    i = m.i + m.size;
+    j = m.j + m.size;
+  }
+  return ops;
+}
+
+function projectStylesByOpcodes(
+  jsonText: string,
+  jsonNorm: string,
+  jsonNormToOrig: number[],
+  pdfNormSlice: string,
+  pdfStyles: string[],
+  pdfNormToOrig: number[],
+  matchStart: number,
+): string[] {
+  const fontByOrig = Array(jsonText.length).fill("normal");
+  for (const op of getOpcodes(jsonNorm, pdfNormSlice)) {
+    if (op.tag === "equal") {
+      for (let k = 0; k < op.i2 - op.i1; k++) {
+        const ji = op.i1 + k;
+        const pj = matchStart + op.j1 + k;
+        if (ji < jsonNormToOrig.length && pj < pdfNormToOrig.length) {
+          const jOrig = jsonNormToOrig[ji];
+          const pdfOi = pdfNormToOrig[pj];
+          if (jOrig >= 0 && jOrig < fontByOrig.length && pdfOi >= 0 && pdfOi < pdfStyles.length) {
+            fontByOrig[jOrig] = pdfStyles[pdfOi];
+          }
+        }
+      }
+    } else if (op.tag === "replace" && op.i2 > op.i1 && op.j2 > op.j1) {
+      for (let k = 0; k < op.i2 - op.i1; k++) {
+        const ji = op.i1 + k;
+        const rel = k / Math.max(op.i2 - op.i1, 1);
+        const pj =
+          matchStart + op.j1 + Math.min(Math.floor(rel * (op.j2 - op.j1)), op.j2 - op.j1 - 1);
+        if (ji < jsonNormToOrig.length && pj >= 0 && pj < pdfNormToOrig.length) {
+          const jOrig = jsonNormToOrig[ji];
+          const pdfOi = pdfNormToOrig[pj];
+          if (jOrig >= 0 && jOrig < fontByOrig.length && pdfOi >= 0 && pdfOi < pdfStyles.length) {
+            fontByOrig[jOrig] = pdfStyles[pdfOi];
+          }
+        }
+      }
+    }
+  }
+  return fontByOrig;
+}
+
 function leadingTrailingQuotes(pdfSlice: string): { leading: string; trailing: string } {
   let leading = "";
   let trailing = "";
@@ -334,19 +489,17 @@ function alignField(
   while (pdfOrigStart > 0 && QUOTE_CHARS.has(pdfText[pdfOrigStart - 1])) pdfOrigStart--;
   while (pdfOrigEnd < pdfText.length && QUOTE_CHARS.has(pdfText[pdfOrigEnd])) pdfOrigEnd++;
   const pdfSlice = pdfText.slice(pdfOrigStart, pdfOrigEnd);
+  const pdfNormSlice = pdfNorm.slice(matchStart, matchEnd);
 
-  const fontByOrig = Array(jsonText.length).fill("normal");
-  const jsonSpan = matchEnd - matchStart;
-  for (let ji = 0; ji < jsonNormToOrig.length; ji++) {
-    if (jsonSpan <= 0) break;
-    const rel = ji / Math.max(jsonNormToOrig.length, 1);
-    const pdfRel = jsonSpan > 1 ? Math.floor(rel * (jsonSpan - 1)) : 0;
-    const pdfNi = matchStart + Math.min(pdfRel, jsonSpan - 1);
-    if (pdfNi >= 0 && pdfNi < pdfNormToOrig.length) {
-      const pdfOi = pdfNormToOrig[pdfNi];
-      if (pdfOi >= 0 && pdfOi < pdfStyles.length) fontByOrig[jsonNormToOrig[ji]] = pdfStyles[pdfOi];
-    }
-  }
+  const fontByOrig = projectStylesByOpcodes(
+    jsonText,
+    jsonNorm,
+    jsonNormToOrig,
+    pdfNormSlice,
+    pdfStyles,
+    pdfNormToOrig,
+    matchStart,
+  );
   const mapped = Array(jsonText.length).fill(false);
   for (const jOrig of jsonNormToOrig) {
     if (jOrig >= 0 && jOrig < mapped.length) mapped[jOrig] = true;
@@ -402,6 +555,131 @@ function flattenRuns(runs: TextRun[]): { text: string; styles: string[] } {
     }
   }
   return { text, styles };
+}
+
+function phraseOk(phrase: string): boolean {
+  const stripped = (phrase || "").trim();
+  if (stripped.length < 4) return false;
+  let letters = 0;
+  for (const ch of stripped) {
+    if (/\p{L}/u.test(ch)) letters += 1;
+  }
+  return letters >= 3;
+}
+
+function emphasisPhrases(runs: TextRun[]): Array<{ phrase: string; estilo: string }> {
+  const { text, styles } = flattenRuns(runs);
+  const coalesced = coalesceMidwordStyleBreaks(text, styles);
+  const phrases: Array<{ phrase: string; estilo: string }> = [];
+  let i = 0;
+  while (i < text.length) {
+    const estilo = coalesced[i];
+    if (estilo !== "italico" && estilo !== "negrito_italico") {
+      i += 1;
+      continue;
+    }
+    let j = i + 1;
+    while (j < text.length && coalesced[j] === estilo) j += 1;
+    const phrase = text.slice(i, j);
+    if (phraseOk(phrase)) phrases.push({ phrase, estilo });
+    i = j;
+  }
+  return phrases;
+}
+
+function fontFromField(value: unknown, n: number): string[] {
+  if (typeof value === "string") return Array(n).fill("normal");
+  const fonts: string[] = [];
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (item && typeof item === "object" && !Array.isArray(item)) {
+        const trecho = String((item as Record<string, unknown>).trecho ?? "");
+        const estilo = String((item as Record<string, unknown>).estilo ?? "normal");
+        const font = FONT_STYLES.has(estilo) ? estilo : "normal";
+        for (let i = 0; i < trecho.length; i++) fonts.push(font);
+      } else if (typeof item === "string") {
+        for (let i = 0; i < item.length; i++) fonts.push("normal");
+      }
+    }
+  }
+  while (fonts.length < n) fonts.push("normal");
+  return fonts.slice(0, n);
+}
+
+function paintPhrase(
+  text: string,
+  font: string[],
+  visual: Array<string | null>,
+  phrase: string,
+  estilo: string,
+): boolean {
+  const needle = phrase.trim();
+  if (!needle || needle.length > text.length) return false;
+  const hay = text.toLocaleLowerCase();
+  const needleCf = needle.toLocaleLowerCase();
+  let start = 0;
+  let changed = false;
+  while (start <= hay.length - needleCf.length) {
+    const idx = hay.indexOf(needleCf, start);
+    if (idx < 0) break;
+    for (let k = 0; k < needle.length; k++) {
+      const pos = idx + k;
+      if (pos >= font.length) break;
+      if (visual[pos]) continue;
+      if (font[pos] === "normal") {
+        font[pos] = estilo;
+        changed = true;
+      }
+    }
+    start = idx + Math.max(needle.length, 1);
+  }
+  return changed;
+}
+
+function applyOrphanEmphasis(
+  node: Record<string, unknown>,
+  runs: TextRun[],
+): Record<string, unknown> {
+  const phrases = emphasisPhrases(runs);
+  if (!phrases.length) return node;
+
+  const walk = (n: unknown): unknown => {
+    if (n && typeof n === "object" && !Array.isArray(n)) {
+      const obj = n as Record<string, unknown>;
+      const out: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(obj)) {
+        if (key === "descricao") {
+          out[key] = value;
+          continue;
+        }
+        if (STYLE_KEYS.has(key)) {
+          const { text, visual } = flattenFieldText(value);
+          if (!text) {
+            out[key] = value;
+            continue;
+          }
+          const font = fontFromField(value, text.length);
+          let changed = false;
+          for (const { phrase, estilo } of phrases) {
+            if (paintPhrase(text, font, visual, phrase, estilo)) changed = true;
+          }
+          out[key] = changed
+            ? segmentsFromStyles(text, coalesceMidwordStyleBreaks(text, font), visual)
+            : value;
+        } else {
+          out[key] = walk(value);
+        }
+      }
+      return out;
+    }
+    if (Array.isArray(n)) return n.map((item) => walk(item));
+    return n;
+  };
+
+  const walked = walk(node);
+  return walked && typeof walked === "object" && !Array.isArray(walked)
+    ? (walked as Record<string, unknown>)
+    : node;
 }
 
 function walkAndMerge(
@@ -471,8 +749,12 @@ export function mergeStylesIntoPage(
     pdfNormToOrig,
     cursor,
   );
-  return merged && typeof merged === "object" && !Array.isArray(merged)
-    ? (merged as Record<string, unknown>)
+  const withOrphans =
+    merged && typeof merged === "object" && !Array.isArray(merged)
+      ? applyOrphanEmphasis(merged as Record<string, unknown>, pageStyles.runs)
+      : merged;
+  return withOrphans && typeof withOrphans === "object" && !Array.isArray(withOrphans)
+    ? (withOrphans as Record<string, unknown>)
     : pageStructure;
 }
 

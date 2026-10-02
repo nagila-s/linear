@@ -26,6 +26,7 @@ _NOISE_RE = re.compile(
     r"acervo\s+pessoal|reprodu[cç][aã]o)",
     re.IGNORECASE,
 )
+_QUOTE_CHARS = frozenset("\"'“”„‟«»‹›‚‘’‛")
 _PAGE_NUM_RE = re.compile(r"^[\d\s.\-/]+$")
 
 
@@ -33,8 +34,19 @@ def collapse_for_diff(text: str) -> str:
     return _WS_RE.sub(" ", (text or "").replace("\u00ad", "")).strip()
 
 
+def _looks_quoted(text: str) -> bool:
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    if raw[0] in _QUOTE_CHARS or raw[-1] in _QUOTE_CHARS:
+        return True
+    return any(ch in _QUOTE_CHARS for ch in raw[:3] + raw[-3:])
+
+
 def _is_noise_span(text: str) -> bool:
     raw = (text or "").strip()
+    if _looks_quoted(raw) and len(raw) >= MIN_SPAN_CHARS:
+        return False
     if len(raw) < MIN_SPAN_CHARS:
         return True
     if _PAGE_NUM_RE.fullmatch(raw):
@@ -88,11 +100,15 @@ def find_missing_pdf_spans(pdf_text: str, json_text: str) -> list[str]:
             continue
         if tag == "replace":
             json_chunk = json_flat[i1:i2]
-            if SequenceMatcher(None, json_chunk, pdf_chunk).ratio() >= REPLACE_KEEP_RATIO:
+            if (
+                not _looks_quoted(pdf_chunk)
+                and SequenceMatcher(None, json_chunk, pdf_chunk).ratio() >= REPLACE_KEEP_RATIO
+            ):
                 continue
         if _is_noise_span(pdf_chunk):
             continue
-        missing.append(pdf_chunk[:MAX_SNIPPET_CHARS])
+        cap = len(pdf_chunk) if _looks_quoted(pdf_chunk) else MAX_SNIPPET_CHARS
+        missing.append(pdf_chunk[:cap])
         if len(missing) >= MAX_SNIPPETS:
             break
     return missing

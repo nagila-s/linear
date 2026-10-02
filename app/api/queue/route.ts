@@ -14,6 +14,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const response = await fetchFastApi(`/queue?tab=${encodeURIComponent(tab)}&limit=${encodeURIComponent(limit)}`);
     const payload = await readFastApiJson(response);
     if (!response.ok) {
+      if (response.status === 404) {
+        return jsonError(
+          "A fila ainda nao esta disponivel nesta API. E preciso publicar a imagem nova da FastAPI na AWS (endpoint /queue).",
+          503,
+        );
+      }
       return jsonError(extractFastApiError(payload, "Falha ao listar a fila."), response.status);
     }
     return NextResponse.json(payload);

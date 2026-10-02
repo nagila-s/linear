@@ -21,6 +21,10 @@ from src.pipeline.steps.page_completeness import (
     split_plain_text_chunks,
     split_plain_text_for_columns,
 )
+from src.pipeline.steps.quote_regions import (
+    extract_quote_regions,
+    restore_missing_quote_regions,
+)
 from src.pipeline.steps.text_gap_fill import (
     analyze_text_gaps,
     build_gap_fill_prompt,
@@ -689,6 +693,22 @@ class OpenAIService:
             return expanded
         return data
 
+    def _restore_omitted_quotes(
+        self,
+        page_structure: Dict[str, Any],
+        page_plain_text: Optional[str],
+    ) -> Dict[str, Any]:
+        if not isinstance(page_structure, dict):
+            return page_structure
+        pdf = page_plain_text or ""
+        restored = restore_missing_quote_regions(
+            page_structure,
+            extract_quote_regions(pdf),
+            pdf_text=pdf,
+            literary=self.literario,
+        )
+        return restored if isinstance(restored, dict) else page_structure
+
     def fill_text_gaps_if_needed(
         self,
         page_png: bytes,
@@ -848,6 +868,7 @@ class OpenAIService:
             )
 
             self._apply_page_metadata(data, page_type, prompt_version)
+            data = self._restore_omitted_quotes(data, page_plain_text)
             data = self.fill_text_gaps_if_needed(
                 page_png,
                 data,
@@ -1000,6 +1021,7 @@ class OpenAIService:
         )
 
         self._apply_page_metadata(page_structure, page_type, prompt_version)
+        page_structure = self._restore_omitted_quotes(page_structure, page_plain_text)
         page_structure = self.fill_text_gaps_if_needed(
             page_png,
             page_structure,

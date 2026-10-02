@@ -22,6 +22,17 @@ STYLE_KEYS = frozenset(
         "titulo_boxe",
         "titulo_tabela",
         "cabecalho",
+        "titulo",
+        "titulo_1",
+        "titulo_2",
+        "titulo_3",
+        "titulo_4",
+        "titulo_5",
+        "enunciado",
+        "termo",
+        "valor",
+        "legenda",
+        "fonte",
     }
 )
 
@@ -542,6 +553,8 @@ def merge_styles_into_page(
     merged = _walk_and_merge(
         page_structure, pdf_text, pdf_styles, pdf_norm, pdf_norm_to_orig, cursor, stats
     )
+    if isinstance(merged, dict):
+        merged = _apply_orphan_emphasis(merged, page_styles.runs)
     logger.info(
         "style_merge page=%s coverage=%.1f%% fields=%s/%s chars=%s/%s",
         page_number if page_number is not None else page_styles.page_number,
@@ -552,3 +565,112 @@ def merge_styles_into_page(
         stats.json_chars,
     )
     return merged if isinstance(merged, dict) else page_structure
+
+
+def _phrase_ok(phrase: str) -> bool:
+    stripped = (phrase or "").strip()
+    if len(stripped) < 4:
+        return False
+    letters = sum(1 for ch in stripped if ch.isalpha())
+    return letters >= 3
+
+
+def _emphasis_phrases(runs: list[TextRun]) -> list[tuple[str, str]]:
+    pdf_text, pdf_styles, _ = _flatten_runs(runs)
+    pdf_styles = _coalesce_midword_style_breaks(pdf_text, pdf_styles)
+    phrases: list[tuple[str, str]] = []
+    i = 0
+    n = len(pdf_text)
+    while i < n:
+        estilo = pdf_styles[i]
+        if estilo not in {"italico", "negrito_italico"}:
+            i += 1
+            continue
+        j = i + 1
+        while j < n and pdf_styles[j] == estilo:
+            j += 1
+        phrase = pdf_text[i:j]
+        if _phrase_ok(phrase):
+            phrases.append((phrase, estilo))
+        i = j
+    return phrases
+
+
+def _font_from_field(value: Any, n: int) -> list[str]:
+    if isinstance(value, str):
+        return ["normal"] * n
+    fonts: list[str] = []
+    if isinstance(value, list):
+        for item in value:
+            if isinstance(item, dict):
+                trecho = str(item.get("trecho") or "")
+                estilo = str(item.get("estilo") or "normal")
+                font = estilo if estilo in FONT_STYLES else "normal"
+                fonts.extend([font] * len(trecho))
+            elif isinstance(item, str):
+                fonts.extend(["normal"] * len(item))
+    if len(fonts) < n:
+        fonts.extend(["normal"] * (n - len(fonts)))
+    return fonts[:n]
+
+
+def _paint_phrase(text: str, font: list[str], visual: list[str | None], phrase: str, estilo: str) -> None:
+    needle = phrase.strip()
+    if not needle or len(needle) > len(text):
+        return
+    hay = text.casefold()
+    needle_cf = needle.casefold()
+    start = 0
+    while True:
+        idx = hay.find(needle_cf, start)
+        if idx < 0:
+            return
+        for k in range(len(needle)):
+            pos = idx + k
+            if pos >= len(font):
+                break
+            if visual[pos]:
+                continue
+            if font[pos] == "normal":
+                font[pos] = estilo
+        start = idx + max(len(needle), 1)
+
+
+def _apply_orphan_emphasis(node: Any, runs: list[TextRun]) -> Any:
+    """Pinta itálico do PDF em trechos já transcritos que o alinhamento sequencial perdeu."""
+    phrases = _emphasis_phrases(runs)
+    if not phrases:
+        return node
+
+    def walk(n: Any) -> Any:
+        if isinstance(n, dict):
+            out: dict[str, Any] = {}
+            for key, value in n.items():
+                if key == "descricao":
+                    out[key] = value
+                    continue
+                if key in STYLE_KEYS:
+                    flat, visual = _flatten_field_text(value)
+                    if not flat:
+                        out[key] = value
+                        continue
+                    font = _font_from_field(value, len(flat))
+                    changed = False
+                    for phrase, estilo in phrases:
+                        before = list(font)
+                        _paint_phrase(flat, font, visual, phrase, estilo)
+                        if font != before:
+                            changed = True
+                    if changed:
+                        font = _coalesce_midword_style_breaks(flat, font)
+                        out[key] = _segments_from_styles(flat, font, visual)
+                    else:
+                        out[key] = value
+                else:
+                    out[key] = walk(value)
+            return out
+        if isinstance(n, list):
+            return [walk(item) for item in n]
+        return n
+
+    return walk(node)

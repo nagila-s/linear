@@ -6,6 +6,7 @@ import {
   normalizePageType,
   readQueue,
   refreshCounters,
+  sanitizeJsonForPostgres,
   sha256Hex,
   shouldClassify,
   signedUrl,
@@ -18,6 +19,7 @@ import { askVisionJson, askVisionText } from "../_shared/openai.ts";
 import { describeWithDorina } from "../_shared/dorina.ts";
 import { omitImageCredits, stripImageCredits } from "../_shared/image-credits.ts";
 import { mergeStylesIntoPage, pagesFromPayload } from "../_shared/style-merge.ts";
+import { restoreQuotesFromPageStyles } from "../_shared/quote-regions.ts";
 import {
   analyzeTextGaps,
   buildGapFillPrompt,
@@ -256,13 +258,13 @@ async function linearizePage(
     }
   }
 
-  const content = {
+  const content = sanitizeJsonForPostgres({
     ...result.data,
     tipo_pagina: pageType,
     prompt_version: "test",
     prompt_file: promptFile,
     prompt_hash: promptHash,
-  };
+  });
 
   const filled = omitImageCredits(
     await fillTextGapsIfNeeded(supabase, msg.job_id, page.page_number, imageUrl, content),
@@ -430,7 +432,7 @@ async function describeFigure(
     imageUrl,
     context: figure.context || "",
   });
-  const description = String(payload.description || "").trim();
+  const description = sanitizeJsonForPostgres(String(payload.description || "").trim());
   if (!description) throw new Error("Dorina retornou descricao vazia.");
 
   await supabase
@@ -438,7 +440,7 @@ async function describeFigure(
     .update({
       status: "ok",
       description,
-      dorina_payload: payload,
+      dorina_payload: sanitizeJsonForPostgres(payload),
       error_message: null,
     })
     .eq("id", figureId);
@@ -468,7 +470,7 @@ async function applyDescriptionToPage(
     }
     return item;
   });
-  await supabase.from("test_pages").update({ content }).eq("id", pageId);
+  await supabase.from("test_pages").update({ content: sanitizeJsonForPostgres(content) }).eq("id", pageId);
 }
 
 async function maybeEnqueueFinalize(
@@ -533,9 +535,14 @@ async function finalizeJob(
     const styles = textSpansByPage.get(page.page_number);
     let mergedContent = content;
     if (content && typeof content === "object" && !Array.isArray(content) && styles) {
-      mergedContent = omitImageCredits(
-        mergeStylesIntoPage(content as Record<string, unknown>, styles),
-      );
+      const withQuotes = restoreQuotesFromPageStyles(
+        content as Record<string, unknown>,
+        styles,
+        {
+          pdfText: styles.runs.map((r) => r.text).join(""),
+        },
+      ) as Record<string, unknown>;
+      mergedContent = omitImageCredits(mergeStylesIntoPage(withQuotes, styles));
     }
     return {
       page_number: page.page_number,

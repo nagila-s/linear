@@ -40,6 +40,22 @@ const MAX_JSON_IN_PROMPT = 50000;
 const NOISE_RE =
   /(shutterstock|getty\s*images|alamy|istock|acervo\s+da\s+editora|acervo\s+pessoal|reprodu[cç][aã]o)/i;
 const PAGE_NUM_RE = /^[\d\s.\-/]+$/;
+const QUOTE_CHARS = new Set([
+  '"',
+  "'",
+  "\u201c",
+  "\u201d",
+  "\u201e",
+  "\u201f",
+  "\u00ab",
+  "\u00bb",
+  "\u2039",
+  "\u203a",
+  "\u201a",
+  "\u2018",
+  "\u2019",
+  "\u201b",
+]);
 
 export type TextGapReport = {
   pdfChars: number;
@@ -53,8 +69,20 @@ export function collapseForDiff(text: string): string {
   return (text || "").replace(/\u00ad/g, "").replace(/\s+/g, " ").trim();
 }
 
+function looksQuoted(text: string): boolean {
+  const raw = (text || "").trim();
+  if (!raw) return false;
+  if (QUOTE_CHARS.has(raw[0]) || QUOTE_CHARS.has(raw[raw.length - 1])) return true;
+  const edges = raw.slice(0, 3) + raw.slice(-3);
+  for (const ch of edges) {
+    if (QUOTE_CHARS.has(ch)) return true;
+  }
+  return false;
+}
+
 function isNoiseSpan(text: string): boolean {
   const raw = (text || "").trim();
+  if (looksQuoted(raw) && raw.length >= MIN_SPAN_CHARS) return false;
   if (raw.length < MIN_SPAN_CHARS) return true;
   if (PAGE_NUM_RE.test(raw)) return true;
   if (isImageCredit(raw)) return true;
@@ -117,7 +145,7 @@ function findMissingPdfSpans(pdfText: string, jsonText: string): string[] {
   if (!pdf) return [];
   if (!json) {
     const span = pdf.trim();
-    return isNoiseSpan(span) ? [] : [span.slice(0, MAX_SNIPPET_CHARS)];
+    return isNoiseSpan(span) ? [] : [looksQuoted(span) ? span : span.slice(0, MAX_SNIPPET_CHARS)];
   }
 
   const words = pdf.split(" ").filter(Boolean);
@@ -129,7 +157,7 @@ function findMissingPdfSpans(pdfText: string, jsonText: string): string[] {
     buf = [];
     if (!chunk || isNoiseSpan(chunk)) return;
     if (json.includes(chunk.toLocaleLowerCase())) return;
-    missing.push(chunk.slice(0, MAX_SNIPPET_CHARS));
+    missing.push(looksQuoted(chunk) ? chunk : chunk.slice(0, MAX_SNIPPET_CHARS));
   };
 
   let i = 0;
