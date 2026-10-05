@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import codecs
 import json
 import logging
@@ -8,27 +10,71 @@ _UNICODE_ESCAPE_RE = re.compile(r"\\u[0-9a-fA-F]{4}|\\U[0-9a-fA-F]{8}")
 _TRAILING_COMMA_RE = re.compile(r",(\s*[}\]])")
 _FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE | re.MULTILINE)
 _TRAILING_COMMA_EOF_RE = re.compile(r",\s*$")
+# Modelo às vezes emite \u0000e7 no lugar de \u00e7 (ç) e \u0000e3 no lugar de \u00e3 (ã).
+_BROKEN_JSON_U00_RE = re.compile(r"\\u0000([0-9a-fA-F]{2})", re.IGNORECASE)
+_NUL_HEX_RE = re.compile(r"\x00([0-9a-fA-F]{2})")
+_ILLEGAL_JSON_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 logger = logging.getLogger(__name__)
 
 
-def normalize_unicode_in_json(value: Any) -> Any:
-    """Converte sequencias literais \\uXXXX ainda presentes em strings apos parse."""
+def _decode_unicode_escape_match(match: re.Match[str]) -> str:
+    seq = match.group(0)
+    try:
+        return codecs.decode(seq, "unicode_escape")
+    except (UnicodeError, ValueError):
+        return seq
+
+
+def _repair_nul_hex_pair(match: re.Match[str]) -> str:
+    return chr(int(match.group(1), 16))
+
+
+def sanitize_json_string(value: str) -> str:
+    """Reconstroi \\u00xx quebrado em NUL+hex e remove controles ilegais no Postgres."""
+    repaired = _NUL_HEX_RE.sub(_repair_nul_hex_pair, value)
+    return _ILLEGAL_JSON_CHARS_RE.sub("", repaired)
+
+
+def sanitize_json_for_postgres(value: Any) -> Any:
+    """Limpa recursivamente um payload JSON antes de gravar em coluna jsonb."""
     if isinstance(value, dict):
-        return {k: normalize_unicode_in_json(v) for k, v in value.items()}
+        return {
+            sanitize_json_string(k) if isinstance(k, str) else k: sanitize_json_for_postgres(v)
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [sanitize_json_for_postgres(v) for v in value]
+    if isinstance(value, str):
+        return sanitize_json_string(value)
+    return value
+
+
+def normalize_unicode_in_json(value: Any) -> Any:
+    """Converte sequencias literais \\uXXXX ainda presentes em strings apos parse.
+
+    Decodifica so os escapes, sem unicode_escape na string inteira
+    (isso corrompe UTF-8 de portugues). Em seguida repara NUL+hex e C0.
+    """
+    if isinstance(value, dict):
+        return {
+            normalize_unicode_in_json(k) if isinstance(k, str) else k: normalize_unicode_in_json(v)
+            for k, v in value.items()
+        }
     if isinstance(value, list):
         return [normalize_unicode_in_json(v) for v in value]
-    if isinstance(value, str) and _UNICODE_ESCAPE_RE.search(value):
-        try:
-            return codecs.decode(value, "unicode_escape")
-        except (UnicodeError, ValueError):
-            return value
+    if isinstance(value, str):
+        if _UNICODE_ESCAPE_RE.search(value):
+            value = _UNICODE_ESCAPE_RE.sub(_decode_unicode_escape_match, value)
+        return sanitize_json_string(value)
     return value
 
 
 def _strip_fences_and_commas(text: str) -> str:
     cleaned = text.strip().lstrip("\ufeff")
     cleaned = _FENCE_RE.sub("", cleaned).strip()
+    # \u0000e7 → \u00e7  (modelo cortou o escape de ç/ã no meio)
+    cleaned = _BROKEN_JSON_U00_RE.sub(r"\\u00\1", cleaned)
     cleaned = _TRAILING_COMMA_RE.sub(r"\1", cleaned)
     return cleaned
 
@@ -173,6 +219,51 @@ def _protect_editorial_quotes(text: str) -> str:
     return structural
 
 
+def _escape_newlines_in_strings(text: str) -> str:
+    """Converte quebras literais dentro de strings JSON em \\n (poema/citação multilinha)."""
+    out: list[str] = []
+    in_string = False
+    escape = False
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if in_string:
+            if escape:
+                out.append(ch)
+                escape = False
+                i += 1
+                continue
+            if ch == "\\":
+                out.append(ch)
+                escape = True
+                i += 1
+                continue
+            if ch == '"':
+                in_string = False
+                out.append(ch)
+                i += 1
+                continue
+            if ch == "\r":
+                out.append("\\n")
+                i += 1
+                if i < n and text[i] == "\n":
+                    i += 1
+                continue
+            if ch == "\n":
+                out.append("\\n")
+                i += 1
+                continue
+            out.append(ch)
+            i += 1
+            continue
+        if ch == '"':
+            in_string = True
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
 def repair_llm_json_text(text: str, *, replace_curly_quotes: bool = False) -> str:
     """Aplica correcoes comuns em JSON gerado por modelos de linguagem.
 
@@ -183,7 +274,9 @@ def repair_llm_json_text(text: str, *, replace_curly_quotes: bool = False) -> st
     del replace_curly_quotes
     cleaned = text.strip().lstrip("\ufeff")
     cleaned = _FENCE_RE.sub("", cleaned).strip()
+    cleaned = _BROKEN_JSON_U00_RE.sub(r"\\u00\1", cleaned)
     cleaned = _protect_editorial_quotes(cleaned)
+    cleaned = _escape_newlines_in_strings(cleaned)
     cleaned = _TRAILING_COMMA_RE.sub(r"\1", cleaned)
     return cleaned
 
@@ -280,7 +373,20 @@ def _try_load_dict(payload: str) -> dict[str, Any] | None:
             parsed = json.loads(payload)
         except json.JSONDecodeError:
             return None
-    return parsed if isinstance(parsed, dict) else None
+    if not isinstance(parsed, dict):
+        return None
+    return sanitize_json_for_postgres(parsed)
+
+
+def _text_weight(value: Any) -> int:
+    """Quantidade de texto no objeto — preferir o parse que não comeu a citação."""
+    if isinstance(value, dict):
+        return sum(_text_weight(v) for k, v in value.items() if k not in {"tipo", "estilo", "tipo_pagina"})
+    if isinstance(value, list):
+        return sum(_text_weight(v) for v in value)
+    if isinstance(value, str):
+        return len(value)
+    return 0
 
 
 def parse_llm_json(content: str) -> dict[str, Any]:
@@ -293,6 +399,7 @@ def parse_llm_json(content: str) -> dict[str, Any]:
         raise json.JSONDecodeError("Resposta vazia.", content or "", 0)
 
     last_error: json.JSONDecodeError | None = None
+    found: list[dict[str, Any]] = []
 
     for replace_quotes in (False, True):
         cleaned = repair_llm_json_text(content, replace_curly_quotes=replace_quotes)
@@ -320,7 +427,8 @@ def parse_llm_json(content: str) -> dict[str, Any]:
                 except Exception:  # noqa: BLE001
                     parsed = None
                 if parsed is not None:
-                    return parsed
+                    found.append(parsed)
+                    continue
                 try:
                     json.loads(payload)
                 except json.JSONDecodeError as exc:
@@ -332,13 +440,16 @@ def parse_llm_json(content: str) -> dict[str, Any]:
 
             repaired = repair_json(cleaned, return_objects=True)
             if isinstance(repaired, dict):
-                return repaired
-            if isinstance(repaired, str):
+                found.append(sanitize_json_for_postgres(repaired))
+            elif isinstance(repaired, str):
                 parsed = _try_load_dict(repaired)
                 if parsed is not None:
-                    return parsed
+                    found.append(parsed)
         except Exception as exc:  # noqa: BLE001
             logger.debug("json_repair falhou (quotes=%s): %s", replace_quotes, exc)
+
+    if found:
+        return max(found, key=_text_weight)
 
     if last_error is not None:
         raise last_error

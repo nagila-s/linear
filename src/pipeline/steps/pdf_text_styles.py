@@ -6,14 +6,25 @@ import re
 from dataclasses import asdict, dataclass
 from typing import Any
 
-import fitz
+try:
+    import fitz
+except ImportError:  # pragma: no cover - extração de PDF exige PyMuPDF
+    fitz = None  # type: ignore[assignment]
 
 # PyMuPDF span flags: bit 0 superscript, 1 italic, 2 serifed, 3 monospaced, 4 bold
 _FLAG_ITALIC = 1 << 1
 _FLAG_BOLD = 1 << 4
 
 _BOLD_NAME_RE = re.compile(r"(bold|black|heavy|semibold|demi)", re.IGNORECASE)
-_ITALIC_NAME_RE = re.compile(r"(italic|oblique)", re.IGNORECASE)
+_ITALIC_NAME_RE = re.compile(
+    r"(italic|oblique|kursiv|cursive|(?<![a-z])ital(?![a-z]))",
+    re.IGNORECASE,
+)
+# Minion-It, Times,Italic, Fonte_I — não casar "Times" nem "Semi".
+_ITALIC_SUFFIX_RE = re.compile(r"[,+\-_](it|i)(?:mt|std)?$", re.IGNORECASE)
+# Nomes curtos Base-14 do PyMuPDF (Helvetica-Oblique, Times-Italic, …).
+_ITALIC_SHORT_NAMES = frozenset({"heit", "hebi", "tito", "tibo", "coui", "cobo"})
+_BOLD_SHORT_NAMES = frozenset({"hebo", "hebi", "tibo", "cobo"})
 
 FONT_STYLES = frozenset({"normal", "negrito", "italico", "negrito_italico"})
 
@@ -41,10 +52,41 @@ class PageTextStyles:
         }
 
 
-def classify_font_style(flags: int, font_name: str) -> str:
-    name = font_name or ""
-    bold = bool(flags & _FLAG_BOLD) or bool(_BOLD_NAME_RE.search(name))
-    italic = bool(flags & _FLAG_ITALIC) or bool(_ITALIC_NAME_RE.search(name))
+def _font_basename(name: str) -> str:
+    raw = (name or "").strip()
+    if "+" in raw:
+        raw = raw.rsplit("+", 1)[-1]
+    return raw
+
+
+def _name_looks_bold(name: str) -> bool:
+    base = _font_basename(name)
+    if not base:
+        return False
+    if base.lower() in _BOLD_SHORT_NAMES:
+        return True
+    return bool(_BOLD_NAME_RE.search(base))
+
+
+def _name_looks_italic(name: str) -> bool:
+    base = _font_basename(name)
+    if not base:
+        return False
+    if base.lower() in _ITALIC_SHORT_NAMES:
+        return True
+    if _ITALIC_NAME_RE.search(base):
+        return True
+    return bool(_ITALIC_SUFFIX_RE.search(base))
+
+
+def classify_font_style(
+    flags: int,
+    font_name: str,
+    extra_names: tuple[str, ...] = (),
+) -> str:
+    names = (font_name or "", *extra_names)
+    bold = bool(flags & _FLAG_BOLD) or any(_name_looks_bold(n) for n in names if n)
+    italic = bool(flags & _FLAG_ITALIC) or any(_name_looks_italic(n) for n in names if n)
     if bold and italic:
         return "negrito_italico"
     if bold:
@@ -54,9 +96,29 @@ def classify_font_style(flags: int, font_name: str) -> str:
     return "normal"
 
 
-def _iter_raw_spans(page: fitz.Page) -> list[tuple[str, str]]:
+def _font_alias_map(page: Any) -> dict[str, str]:
+    """Mapeia o nome do span para o basefont (costuma trazer Italic/Bold)."""
+    aliases: dict[str, str] = {}
+    try:
+        items = page.get_fonts() or []
+    except Exception:  # noqa: BLE001
+        return aliases
+    for item in items:
+        if not item or len(item) < 5:
+            continue
+        basefont = str(item[3] or "")
+        name = str(item[4] or "")
+        if name and basefont:
+            aliases[name] = basefont
+        if basefont:
+            aliases.setdefault(basefont, basefont)
+    return aliases
+
+
+def _iter_raw_spans(page: Any) -> list[tuple[str, str]]:
     """Retorna (texto, estilo) por span na ordem de leitura do PyMuPDF."""
     out: list[tuple[str, str]] = []
+    aliases = _font_alias_map(page)
     data = page.get_text("dict")
     for block in data.get("blocks") or []:
         if int(block.get("type") or 0) != 0:
@@ -66,7 +128,10 @@ def _iter_raw_spans(page: fitz.Page) -> list[tuple[str, str]]:
                 text = str(span.get("text") or "")
                 if not text:
                     continue
-                estilo = classify_font_style(int(span.get("flags") or 0), str(span.get("font") or ""))
+                font = str(span.get("font") or "")
+                extra = aliases.get(font, "")
+                extras = (extra,) if extra and extra != font else ()
+                estilo = classify_font_style(int(span.get("flags") or 0), font, extras)
                 out.append((text, estilo))
             # Marca fim de linha para desifenação (não vira run).
             if out and not out[-1][0].endswith("\n"):
@@ -126,7 +191,7 @@ def _dehyphenate_and_merge(raw: list[tuple[str, str]]) -> list[TextRun]:
     return runs
 
 
-def extract_page_text_styles(page: fitz.Page, page_number: int) -> PageTextStyles:
+def extract_page_text_styles(page: Any, page_number: int) -> PageTextStyles:
     raw = _iter_raw_spans(page)
     runs = _dehyphenate_and_merge(raw)
     char_count = sum(len(run.text) for run in runs)
@@ -140,6 +205,8 @@ def extract_text_styles_from_pdf(
     page_end: int | None = None,
 ) -> list[PageTextStyles]:
     """Extrai runs tipográficos de todas as páginas (1-indexed)."""
+    if fitz is None:
+        raise RuntimeError("PyMuPDF (fitz) nao instalado.")
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     try:
         total = doc.page_count

@@ -45,6 +45,22 @@ class FindMissingSpansTests(unittest.TestCase):
         missing = find_missing_pdf_spans(pdf, json_text)
         self.assertEqual(missing, [])
 
+    def test_quoted_span_is_not_noise_and_not_truncated(self) -> None:
+        quote = (
+            '"Nao serei o poeta de um mundo caduco. '
+            "Tambem nao cantarei o mundo futuro. "
+            "Estou preso a vida e olho meus companheiros. "
+            "Estao taciturnos mas nutrem grandes esperancas. "
+            + ("verso extra do poema citado. " * 40)
+            + '"'
+        )
+        pdf = "Leia o texto. " + quote + " Responda."
+        json_text = "Leia o texto. Responda."
+        missing = find_missing_pdf_spans(pdf, json_text)
+        joined = " ".join(missing)
+        self.assertIn("companheiros", joined)
+        self.assertGreater(len(joined), 500)
+
 
 class AnalyzeGapsTests(unittest.TestCase):
     def test_needs_fill_when_paragraph_missing(self) -> None:

@@ -82,6 +82,33 @@ export async function sha256Hex(text: string): Promise<string> {
     .join("");
 }
 
+const ILLEGAL_JSON_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g;
+const NUL_HEX_PAIR = /\u0000([0-9a-fA-F]{2})/g;
+
+/** Reconstroi \\u00e7 quebrado em NUL+e7 e remove C0 que o Postgres jsonb recusa. */
+export function sanitizeJsonForPostgres<T>(value: T): T {
+  if (typeof value === "string") {
+    const repaired = value.replace(NUL_HEX_PAIR, (_, hex: string) =>
+      String.fromCharCode(Number.parseInt(hex, 16)),
+    );
+    return repaired.replace(ILLEGAL_JSON_CHARS, "") as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeJsonForPostgres(item)) as T;
+  }
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+      const cleanKey = key
+        .replace(NUL_HEX_PAIR, (_, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)))
+        .replace(ILLEGAL_JSON_CHARS, "");
+      out[cleanKey] = sanitizeJsonForPostgres(nested);
+    }
+    return out as T;
+  }
+  return value;
+}
+
 export function validateLinearizationRoot(data: unknown): { ok: boolean; error?: string } {
   if (!data || typeof data !== "object" || Array.isArray(data)) {
     return { ok: false, error: "Resposta nao e um objeto JSON." };

@@ -5,6 +5,8 @@
  * merge de tiles próximos e fallback de página inteira.
  */
 
+import { classifyFontStyleFromName } from "./font-style";
+
 export type BBox = { x0: number; y0: number; x1: number; y1: number };
 
 export type ExtractedFigure = {
@@ -207,18 +209,6 @@ async function extractRasterBBoxes(page: import("pdfjs-dist").PDFPageProxy): Pro
   return boxes;
 }
 
-const BOLD_NAME_RE = /(bold|black|heavy|semibold|demi)/i;
-const ITALIC_NAME_RE = /(italic|oblique)/i;
-
-function classifyFontStyleFromName(fontName: string): string {
-  const bold = BOLD_NAME_RE.test(fontName || "");
-  const italic = ITALIC_NAME_RE.test(fontName || "");
-  if (bold && italic) return "negrito_italico";
-  if (bold) return "negrito";
-  if (italic) return "italico";
-  return "normal";
-}
-
 function dehyphenateAndMerge(raw: Array<{ text: string; estilo: string }>): TextStyleRun[] {
   const flat: Array<{ ch: string; estilo: string }> = [];
   for (const item of raw) {
@@ -282,9 +272,17 @@ async function extractPageTextStyles(
   const raw: Array<{ text: string; estilo: string }> = [];
   for (const item of content.items || []) {
     if (!item || typeof item !== "object") continue;
-    const record = item as { str?: unknown; fontName?: unknown; hasEOL?: unknown };
+    const record = item as {
+      str?: unknown;
+      fontName?: unknown;
+      hasEOL?: unknown;
+      transform?: unknown;
+    };
     if (typeof record.str !== "string" || !record.str) continue;
-    const estilo = classifyFontStyleFromName(String(record.fontName || ""));
+    const transform = Array.isArray(record.transform)
+      ? record.transform.map((n) => Number(n) || 0)
+      : undefined;
+    const estilo = classifyFontStyleFromName(String(record.fontName || ""), transform);
     raw.push({ text: record.str, estilo });
     if (record.hasEOL) {
       raw.push({ text: "\n", estilo });
