@@ -16,6 +16,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       filename?: string;
       miolo_only?: boolean;
       literario?: boolean;
+      modelo?: string;
       test_run?: boolean;
       prompt_overrides?: Record<string, string>;
       page_count?: number;
@@ -38,6 +39,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         prompt_version: "v1",
         miolo_only: Boolean(body.miolo_only),
         literario: Boolean(body.literario),
+        modelo: body.modelo?.trim() || null,
         test_run: Boolean(body.test_run),
         prompt_overrides: body.prompt_overrides ?? null,
         page_count: body.page_count ?? null,

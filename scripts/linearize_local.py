@@ -51,6 +51,7 @@ def linearize_pdf(
     dpi: int | None = None,
     concurrency: int | None = None,
     literario: bool = False,
+    cardapio: bool = False,
 ) -> Path:
     settings = get_settings()
     prompt_version = prompt_version or settings.linear_prompt_version
@@ -77,7 +78,9 @@ def linearize_pdf(
         (pages_dir / page.page_name).write_bytes(page.page_png)
 
     pages_done = _load_checkpoint(checkpoint_path, prompt_version)
-    openai = OpenAIService(literario=literario)
+    if literario and cardapio:
+        raise SystemExit("literario e cardapio nao podem ser usados juntos.")
+    openai = OpenAIService(literario=literario, cardapio=cardapio)
 
     pending = [p for p in pages if p.page_number not in pages_done]
     if not pending:
@@ -94,7 +97,7 @@ def linearize_pdf(
                 total_pages=len(pages),
                 page_plain_text=plain_text_from_page_styles(styles),
             )
-            if isinstance(content, dict) and styles is not None:
+            if not cardapio and isinstance(content, dict) and styles is not None:
                 content = restore_quotes_from_page_styles(
                     content,
                     styles,
@@ -124,6 +127,8 @@ def linearize_pdf(
         "literario": bool(literario),
         "pages": linearized_pages,
     }
+    if cardapio:
+        final_payload["modelo"] = "cardapio"
     final_path.write_text(json.dumps(final_payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return final_path
 
@@ -146,6 +151,11 @@ def main() -> None:
         action="store_true",
         help="Usa o prompt de livro literario (capa, sumario, ficha, miolo, contracapa).",
     )
+    parser.add_argument(
+        "--cardapio",
+        action="store_true",
+        help="Usa o prompt de cardapio, sem classificador.",
+    )
     args = parser.parse_args()
 
     pdf_path = args.pdf.resolve()
@@ -160,6 +170,7 @@ def main() -> None:
         dpi=args.dpi,
         concurrency=args.concurrency,
         literario=args.literario,
+        cardapio=args.cardapio,
     )
     print(f"Resultado: {final}")
 

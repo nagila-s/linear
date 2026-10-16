@@ -78,9 +78,24 @@ ALLOWED_PROMPT_FILENAMES = frozenset(
         "_shared_rules.txt",
         "_shared_rules_literario.txt",
         "literario.txt",
+        "cardapio.txt",
         "classificador.txt",
     }
 )
+
+CARDAPIO_MODELO = "cardapio"
+
+
+def normalize_modelo(raw: object) -> Optional[str]:
+    """Aceita só 'cardapio'. Vazio significa o fluxo de livro."""
+    if raw is None:
+        return None
+    folded = _fold_label(str(raw)).strip()
+    if not folded:
+        return None
+    if folded != CARDAPIO_MODELO:
+        raise ValueError("modelo invalido. Use 'cardapio'.")
+    return CARDAPIO_MODELO
 
 
 def sanitize_prompt_overrides(raw: object) -> Dict[str, str]:
@@ -107,11 +122,13 @@ class PromptRouter:
         window_end: int = 15,
         overrides: Optional[Dict[str, str]] = None,
         literario: bool = False,
+        cardapio: bool = False,
     ) -> None:
         self.prompts_dir = Path(prompts_dir)
         self.window_start = max(1, window_start)
         self.window_end = max(0, window_end)
         self.literario = bool(literario)
+        self.cardapio = bool(cardapio)
         self.pin_literary_case = False
         self._overrides = sanitize_prompt_overrides(overrides or {})
         self._cache: Dict[str, str] = {}
@@ -165,7 +182,14 @@ class PromptRouter:
             )
         return self._cache["literario"]
 
+    def _cardapio_prompt(self) -> str:
+        if "cardapio" not in self._cache:
+            self._cache["cardapio"] = self._read_file("cardapio.txt")
+        return self._cache["cardapio"]
+
     def get_prompt(self, page_type: str) -> str:
+        if self.cardapio:
+            return self._cardapio_prompt()
         if self.literario:
             prompt = self._literary_prompt()
             if not self.pin_literary_case:

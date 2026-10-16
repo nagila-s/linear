@@ -278,6 +278,7 @@ async def run(ctx: dict) -> dict:
     concurrency = max(1, int(ctx.get("linearize_page_concurrency") or 4))
     miolo_only = bool(ctx.get("miolo_only") or getattr(openai, "miolo_only", False))
     literario = bool(ctx.get("literario") or getattr(openai, "literario", False))
+    cardapio = bool(ctx.get("cardapio") or getattr(openai, "cardapio", False))
 
     pages = ctx.get("pages", [])
     total_pages = len(pages)
@@ -326,7 +327,8 @@ async def run(ctx: dict) -> dict:
                     total_pages=total_pages,
                 )
                 describe_figures = (
-                    not settings.linear_pipeline_only
+                    not cardapio
+                    and not settings.linear_pipeline_only
                     and (miolo_only or PromptRouter.supports_figure_description(page_type))
                     and bool(figure_keys)
                 )
@@ -390,7 +392,7 @@ async def run(ctx: dict) -> dict:
             return
 
         page_styles = text_spans_by_page.get(page_number)
-        if isinstance(page_structure, dict) and page_styles is not None:
+        if not cardapio and isinstance(page_structure, dict) and page_styles is not None:
             page_structure = restore_quotes_from_page_styles(
                 page_structure,
                 page_styles,
@@ -597,7 +599,7 @@ async def run(ctx: dict) -> dict:
     pending_linearize = [p for p in pages if int(p["page_number"]) not in pages_done]
     if pending_linearize:
         await asyncio.gather(*[linearize_page_entry(p) for p in pending_linearize])
-    else:
+    elif not cardapio:
         for page in pages:
             page_number = int(page["page_number"])
             linear_entry = pages_done.get(page_number)
@@ -625,7 +627,12 @@ async def run(ctx: dict) -> dict:
             f"({failed_linearize} falha(s) em {len(pages)} pagina(s))."
         )
 
-    if settings.linear_pipeline_only:
+    if cardapio:
+        logger.info(
+            "job=%s modelo=cardapio — pulando Dorina.",
+            job_id,
+        )
+    elif settings.linear_pipeline_only:
         logger.info(
             "job=%s LINEAR_PIPELINE_ONLY=true — pulando Dorina (figuras nao descritas).",
             job_id,

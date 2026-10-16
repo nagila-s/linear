@@ -5,6 +5,7 @@ const VERCEL_BFF_MAX_BYTES = 4.5 * 1024 * 1024;
 export type StartPdfJobOptions = {
   mioloOnly?: boolean;
   literario?: boolean;
+  modelo?: string;
   testRun?: boolean;
   promptOverrides?: Record<string, string>;
 };
@@ -109,6 +110,7 @@ export async function uploadPdfViaPresigned(
       filename: file.name,
       miolo_only: mioloOnly,
       literario,
+      ...(options.modelo ? { modelo: options.modelo } : {}),
     }),
   });
   const initPayload = await readBrowserJson<UploadInitPayload & { error?: string }>(
@@ -149,6 +151,7 @@ export async function uploadPdfViaPresigned(
     miolo_only: mioloOnly,
     literario,
     test_run: testRun,
+    ...(options.modelo ? { modelo: options.modelo } : {}),
   };
   if (hasPromptOverrides(options)) {
     completeBody.prompt_overrides = options.promptOverrides;
@@ -198,6 +201,7 @@ export async function uploadPdfToApi(
   form.append("prompt_version", "v1");
   form.append("miolo_only", options.mioloOnly ? "true" : "false");
   form.append("literario", options.literario ? "true" : "false");
+  if (options.modelo) form.append("modelo", options.modelo);
   const testRun = Boolean(options.testRun) || hasPromptOverrides(options);
   form.append("test_run", testRun ? "true" : "false");
   if (hasPromptOverrides(options)) {
@@ -254,6 +258,7 @@ export async function uploadPdfViaBff(
   formData.append("contextualize", "false");
   formData.append("miolo_only", options.mioloOnly ? "true" : "false");
   formData.append("literario", options.literario ? "true" : "false");
+  if (options.modelo) formData.append("modelo", options.modelo);
   const testRun = Boolean(options.testRun) || hasPromptOverrides(options);
   formData.append("test_run", testRun ? "true" : "false");
   if (hasPromptOverrides(options)) {
