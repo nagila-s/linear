@@ -30,7 +30,7 @@ from src.repositories.books import BooksRepository
 from src.repositories.jobs import JobsRepository
 from src.services.isbn import resolve_book_key, validate_book_key
 from src.services.pdf_storage import PdfStorageService, is_payload_too_large
-from src.services.prompt_router import sanitize_prompt_overrides
+from src.services.prompt_router import normalize_modelo, sanitize_prompt_overrides
 from src.services.storage import StorageService
 
 load_dotenv()
@@ -73,10 +73,17 @@ def _create_linearize_job(
     miolo_only: bool = False,
     literario: bool = False,
     test_run: bool = False,
+    modelo: str | None = None,
     prompt_overrides: dict[str, str] | None = None,
     page_count: int | None = None,
 ) -> JobResponse:
     process_version = _process_version()
+    try:
+        normalized_modelo = normalize_modelo(modelo)
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
+    if literario and normalized_modelo:
+        raise ValidationError("literario e modelo=cardapio nao podem ser usados juntos.")
     overrides = sanitize_prompt_overrides(prompt_overrides)
     is_test = bool(test_run) or bool(overrides)
     books_repo.upsert(
@@ -99,6 +106,8 @@ def _create_linearize_job(
     }
     if page_count and page_count > 0:
         job_metadata["page_count"] = int(page_count)
+    if normalized_modelo:
+        job_metadata["modelo"] = normalized_modelo
     if is_test:
         job_metadata["test_run"] = True
     if overrides:
@@ -391,6 +400,7 @@ def complete_presigned_upload(payload: UploadCompleteRequest) -> JobResponse:
             miolo_only=payload.miolo_only,
             literario=payload.literario,
             test_run=payload.test_run,
+            modelo=payload.modelo,
             prompt_overrides=payload.prompt_overrides,
             page_count=page_count,
         )
@@ -409,6 +419,7 @@ async def create_job_from_upload(
     miolo_only: bool = Form(False),
     literario: bool = Form(False),
     test_run: bool = Form(False),
+    modelo: str | None = Form(None),
     prompt_overrides: str | None = Form(None),
     pdf_file: UploadFile = File(...),
 ) -> JobResponse:
@@ -447,6 +458,7 @@ async def create_job_from_upload(
             miolo_only=miolo_only,
             literario=literario,
             test_run=test_run,
+            modelo=modelo,
             prompt_overrides=overrides_payload,
             page_count=page_count,
         )

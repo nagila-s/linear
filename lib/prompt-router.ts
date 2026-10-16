@@ -33,6 +33,7 @@ export const PROMPT_FILES: Record<PageType, string> = {
 export const ALLOWED_PROMPT_FILENAMES = new Set<string>([
   ...Object.values(PROMPT_FILES),
   "_shared_rules.txt",
+  "cardapio.txt",
   "classificador.txt",
 ]);
 

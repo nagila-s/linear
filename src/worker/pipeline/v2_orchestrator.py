@@ -10,7 +10,7 @@ from src.repositories.artifacts import ArtifactsRepository
 from src.repositories.db import get_conn
 from src.repositories.jobs import JobsRepository
 from src.services.openai_client import OpenAIService
-from src.services.prompt_router import sanitize_prompt_overrides
+from src.services.prompt_router import CARDAPIO_MODELO, sanitize_prompt_overrides
 from src.services.storage import StorageService
 from src.worker.pipeline.stages import describe, extract_images
 from src.worker.services.dorina_client import DorinaClient
@@ -83,11 +83,13 @@ async def run(job: dict, _queue) -> dict:
         job_metadata = {}
     miolo_only = bool(job_metadata.get("miolo_only"))
     literario = bool(job_metadata.get("literario"))
+    cardapio = str(job_metadata.get("modelo") or "").strip().lower() == CARDAPIO_MODELO
     prompt_overrides = sanitize_prompt_overrides(job_metadata.get("prompt_overrides"))
     test_run = bool(job_metadata.get("test_run")) or bool(prompt_overrides)
     openai = OpenAIService(
         miolo_only=miolo_only,
         literario=literario,
+        cardapio=cardapio,
         prompt_overrides=prompt_overrides or None,
     )
     dorina = DorinaClient()
@@ -95,6 +97,11 @@ async def run(job: dict, _queue) -> dict:
     job_id = UUID(str(job_data["id"]))
     jobs_repo = JobsRepository()
 
+    if cardapio:
+        logger.info(
+            "job=%s modelo=cardapio — classificador desligado, prompt de cardapio em todas as paginas",
+            job_data["id"],
+        )
     if miolo_only and literario:
         logger.info(
             "job=%s literario=true miolo_only=true — classificador desligado, prompt literario em todas as paginas",
@@ -130,6 +137,7 @@ async def run(job: dict, _queue) -> dict:
         "linearize_page_concurrency": app_settings.linearize_page_concurrency,
         "miolo_only": miolo_only,
         "literario": literario,
+        "cardapio": cardapio,
     }
 
     await asyncio.to_thread(jobs_repo.update_stage, job_id, "preprocess")
@@ -180,6 +188,8 @@ async def run(job: dict, _queue) -> dict:
         "dpi": ctx["pdf_render_dpi"],
         "pages": ctx["linearized_pages"],
     }
+    if cardapio:
+        linear_payload["modelo"] = CARDAPIO_MODELO
     context_payload = {
         "isbn": ctx["isbn"],
         "job_id": ctx["job_id"],
@@ -206,6 +216,8 @@ async def run(job: dict, _queue) -> dict:
         ],
         "descriptions": ctx.get("descriptions", []),
     }
+    if cardapio:
+        final_payload["modelo"] = CARDAPIO_MODELO
 
     await asyncio.to_thread(
         storage.upload_json,
