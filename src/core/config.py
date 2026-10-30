@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     # none = padrao barato; medium/high multiplica custo por pagina (reasoning tokens)
     openai_reasoning_effort: str = "none"
     classifier_max_output_tokens: int = 16
-    # 0 = usa teto seguro interno (gpt-5 Responses truncava sem max_output_tokens)
+    # 0 = teto do modelo (128000). Valores menores cortam capa/sumário/ficha.
     linearize_max_output_tokens: int = 0
     prompt_routing_enabled: bool = True
     prompts_directory: str = "prompts"

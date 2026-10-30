@@ -1,0 +1,86 @@
+name: Update worker
+
+on:
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-2
+  ECS_CLUSTER: linear
+  ECS_SERVICE: linear-worker
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push linear-worker
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          set -euo pipefail
+          docker build -f Dockerfile.worker -t "$REGISTRY/linear-worker:latest" .
+          docker push "$REGISTRY/linear-worker:latest"
+
+      - name: Raise output token cap and redeploy
+        run: |
+          set -euo pipefail
+          aws ecs describe-task-definition \
+            --task-definition linear-worker \
+            --query taskDefinition \
+            --output json > td.json
+          python3 << 'PY'
+          import json
+          td = json.load(open("td.json"))
+          for key in (
+              "taskDefinitionArn",
+              "revision",
+              "status",
+              "requiresAttributes",
+              "compatibilities",
+              "registeredAt",
+              "registeredBy",
+              "deregisteredAt",
+          ):
+              td.pop(key, None)
+          env = td["containerDefinitions"][0].setdefault("environment", [])
+          found = False
+          for item in env:
+              if item.get("name") == "LINEARIZE_MAX_OUTPUT_TOKENS":
+                  item["value"] = "128000"
+                  found = True
+          if not found:
+              env.append({"name": "LINEARIZE_MAX_OUTPUT_TOKENS", "value": "128000"})
+          json.dump(td, open("td-new.json", "w"))
+          print("LINEARIZE_MAX_OUTPUT_TOKENS=128000")
+          PY
+          REV=$(aws ecs register-task-definition \
+            --cli-input-json file://td-new.json \
+            --query 'taskDefinition.revision' \
+            --output text)
+          echo "task revision ${REV}"
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --task-definition "linear-worker:${REV}" \
+            --force-new-deployment
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE"
+          aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --query 'services[0].{status:status,running:runningCount,task:taskDefinition,rollout:deployments[0].rolloutState}'

@@ -35,8 +35,10 @@ from src.utils.json_codec import looks_truncated_json, merge_json_fragments, par
 
 logger = logging.getLogger(__name__)
 
-# gpt-5 Responses: sem max_output_tokens a saída costuma truncar cedo em páginas densas.
-_DEFAULT_LINEARIZE_MAX_OUTPUT_TOKENS = 32768
+# gpt-6.1-terra / gpt-5 Responses: sem teto a saída trunca cedo; 32k ainda cortava
+# capa, sumário e ficha (incomplete reason=max_output_tokens, sem JSON).
+# 128000 é o máximo de saída desses modelos. O modelo só gasta o que a página precisa.
+_DEFAULT_LINEARIZE_MAX_OUTPUT_TOKENS = 128000
 
 _COMBINED_FIGURE_SUFFIX = (
     "\n\nRetorne JSON com as chaves page_structure e figure_contexts. "
