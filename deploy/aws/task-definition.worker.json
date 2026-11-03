@@ -28,6 +28,7 @@
         { "name": "LINEARIZE_MAX_OUTPUT_TOKENS", "value": "128000" },
         { "name": "PDF_RENDER_DPI", "value": "120" },
         { "name": "PDF_RENDER_BATCH_SIZE", "value": "10" },
+        { "name": "PDF_FIGURE_EXTRACTOR", "value": "legacy" },
         { "name": "LINEAR_PIPELINE_ONLY", "value": "false" },
         { "name": "LINEARIZE_PAGE_CONCURRENCY", "value": "4" },
         { "name": "DORINA_PAGE_CONCURRENCY", "value": "3" },

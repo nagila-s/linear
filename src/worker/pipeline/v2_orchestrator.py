@@ -127,6 +127,7 @@ async def run(job: dict, _queue) -> dict:
         "openai": openai,
         "dorina": dorina,
         "pdf_render_dpi": app_settings.pdf_render_dpi,
+        "figure_extractor": job_metadata.get("figure_extractor") or app_settings.pdf_figure_extractor,
         "linearize_page_concurrency": app_settings.linearize_page_concurrency,
         "miolo_only": miolo_only,
         "literario": literario,

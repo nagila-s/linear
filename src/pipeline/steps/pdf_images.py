@@ -38,6 +38,8 @@ class ExtractedPdfImage:
     content_hash: str
     source_key: str
     kind: str = "raster"
+    # Só o extrator v3 preenche: bbox, fonte, confiança, legenda e âncora do PDF.
+    meta: dict | None = None
 
 
 def extract_images_from_pdf(

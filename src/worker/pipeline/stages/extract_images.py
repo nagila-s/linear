@@ -2,7 +2,8 @@ import logging
 from typing import Any
 
 from src.core.config import get_settings
-from src.pipeline.steps.pdf_images import extract_images_from_pdf
+from src.pipeline.steps.pdf_figures_v3 import EXTRACTOR_VERSION, extract_images_v3
+from src.pipeline.steps.pdf_images import ExtractedPdfImage, extract_images_from_pdf
 from src.pipeline.steps.pdf_text_styles import (
     extract_text_styles_from_pdf,
     pages_from_payload,
@@ -13,6 +14,34 @@ from src.pipeline.steps.preprocess import preprocess_pdf
 logger = logging.getLogger(__name__)
 
 EXTRACT_CHECKPOINT_FILE = "extract_checkpoint.json"
+FIGURE_EXTRACTORS = ("legacy", "v3")
+
+
+def _figure_extractor(ctx: dict) -> str:
+    choice = str(ctx.get("figure_extractor") or "legacy").strip().lower()
+    if choice not in FIGURE_EXTRACTORS:
+        logger.warning("figure_extractor=%r desconhecido (job=%s); usando legacy.", choice, ctx.get("job_id"))
+        return "legacy"
+    return choice
+
+
+def _extract_figures(pdf_bytes: bytes, *, dpi: int, extractor: str, job_id: str) -> tuple[list[ExtractedPdfImage], str]:
+    """Figuras do PDF e a versão do extrator que de fato as produziu.
+
+    O v3 que falha por inteiro (dependência ausente, bug) cai no extrator atual:
+    o livro sai como sairia antes, em vez de o job falhar.
+    """
+    if extractor == "v3":
+        try:
+            return extract_images_v3(pdf_bytes, render_fallback_dpi=dpi), EXTRACTOR_VERSION
+        except Exception:
+            logger.exception("Extrator v3 falhou (job=%s); usando o extrator legacy.", job_id)
+    figures = extract_images_from_pdf(
+        pdf_bytes,
+        render_dpi=dpi,
+        render_fallback_dpi=dpi,
+    )
+    return figures, "legacy"
 
 
 def _save_extract_checkpoint(
@@ -27,6 +56,7 @@ def _save_extract_checkpoint(
     figures_by_page: dict[int, list[dict]],
     figure_keys_by_page: dict[int, list[str]],
     text_spans_payload: dict | None = None,
+    figure_extractor: str = "legacy",
 ) -> None:
     storage.upload_json(
         isbn,
@@ -36,6 +66,9 @@ def _save_extract_checkpoint(
         {
             "dpi": dpi,
             "process_version": process_version,
+            # Só registro: o checkpoint é do job, e o retry reaproveita as figuras
+            # com que ele começou, mesmo que PDF_FIGURE_EXTRACTOR tenha mudado.
+            "figure_extractor": figure_extractor,
             "pages": pages_meta,
             "figures": figures,
             "figures_by_page": {str(k): v for k, v in figures_by_page.items()},
@@ -153,6 +186,14 @@ async def run(ctx: dict) -> dict:
             ctx["figures"] = restored["figures"]
             ctx["figures_by_page"] = restored["figures_by_page"]
             ctx["figure_keys_by_page"] = restored["figure_keys_by_page"]
+            used = str(cached.get("figure_extractor") or "legacy")
+            if used.split("@", 1)[0] != _figure_extractor(ctx):
+                logger.info(
+                    "job=%s reaproveita figuras do extrator %s (pedido: %s) para não renumerar.",
+                    job_id,
+                    used,
+                    _figure_extractor(ctx),
+                )
             ctx["text_spans_by_page"] = restored.get("text_spans_by_page") or {}
             ctx["text_spans_payload"] = restored.get("text_spans_payload") or {
                 "pages": [],
@@ -169,11 +210,13 @@ async def run(ctx: dict) -> dict:
 
     pdf_bytes = storage.download_by_storage_path(pdf_path)
     pages = preprocess_pdf(pdf_bytes, dpi=dpi, batch_size=batch_size, keep_rgb=False)
-    extracted_figures = extract_images_from_pdf(
+    extracted_figures, figure_extractor = _extract_figures(
         pdf_bytes,
-        render_dpi=dpi,
-        render_fallback_dpi=dpi,
+        dpi=dpi,
+        extractor=_figure_extractor(ctx),
+        job_id=job_id,
     )
+    logger.info("job=%s figuras=%s extrator=%s", job_id, len(extracted_figures), figure_extractor)
     text_style_pages = extract_text_styles_from_pdf(pdf_bytes)
     text_spans_payload = pages_to_payload(text_style_pages)
     text_spans_by_page = {page.page_number: page for page in text_style_pages}
@@ -257,6 +300,8 @@ async def run(ctx: dict) -> dict:
             "page_number": page_number,
             "storage_path": figure_storage_path,
         }
+        if item.meta:
+            figure_entry["extraction"] = item.meta
         figures_by_page.setdefault(page_number, []).append(figure_entry)
         figure_keys_by_page.setdefault(page_number, []).append(figure_entry["figure_key"])
         figures.append(figure_entry)
@@ -272,6 +317,7 @@ async def run(ctx: dict) -> dict:
         figures_by_page=figures_by_page,
         figure_keys_by_page=figure_keys_by_page,
         text_spans_payload=text_spans_payload,
+        figure_extractor=figure_extractor,
     )
 
     ctx["pages"] = page_results

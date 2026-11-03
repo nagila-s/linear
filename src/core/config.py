@@ -66,6 +66,9 @@ class Settings(BaseSettings):
     pdf_render_dpi: int = 150
     # Quantas páginas rasterizar por vez (limita pico de RAM em livros inteiros)
     pdf_render_batch_size: int = 10
+    # Extrator de figuras: "legacy" (pdf_images.py) ou "v3" (src/vendor/pdf_figure_extractor).
+    # Um job pode escolher o próprio em jobs.metadata.figure_extractor.
+    pdf_figure_extractor: str = "legacy"
     linearize_page_concurrency: int = 4
     # Concorrencia da Dorina (paginas em paralelo). Alto demais → Connection reset / HTTP2 terminated.
     dorina_page_concurrency: int = 3

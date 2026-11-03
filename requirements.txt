@@ -11,6 +11,8 @@ tenacity
 pdf2image
 pillow
 numpy
+# Extrator de figuras v3 (src/vendor/pdf_figure_extractor); versão testada nos livros de referência.
+opencv-python-headless==5.0.0.93
 asyncpg
 json-repair
 structlog
