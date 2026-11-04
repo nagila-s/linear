@@ -144,7 +144,7 @@ Se preferir role separada: crie `linearWorkerTaskRole` com trusted entity ECS Ta
 | `BUCKET_JSON` | `json` |
 | `LINEAR_PIPELINE_ONLY` | `true` |
 | `LINEARIZATION_PROMPT_FILE` | `prompt.txt` |
-| `PDF_RENDER_DPI` | `150` |
+| `PDF_RENDER_DPI` | `200` |
 | `LINEARIZE_PAGE_CONCURRENCY` | `4` |
 
 11. **Environment variables — secrets** (tipo *ValueFrom* → SSM):

@@ -64,7 +64,7 @@ def preprocess_pdf(
 ) -> List[PageArtifact]:
     """Rasteriza o PDF em lotes para limitar o pico de memoria.
 
-    Por padrao nao retém `source_rgb_image` (só width/height + PNG grayscale).
+    Por padrao nao retém `source_rgb_image` (só width/height + PNG colorido RGB).
     """
     total_pages = _pdf_page_count(pdf_bytes)
     batch = max(1, int(batch_size))
@@ -83,11 +83,12 @@ def preprocess_pdf(
             for offset, img in enumerate(pages_rgb):
                 page_number = first_page + offset
                 width_px, height_px = img.size
-                grayscale = img.convert("L")
+                color = img if img.mode == "RGB" else img.convert("RGB")
                 page_name = f"p{page_number:04}.png"
                 buffer = io.BytesIO()
-                grayscale.save(buffer, format="PNG")
-                grayscale.close()
+                color.save(buffer, format="PNG")
+                if color is not img:
+                    color.close()
 
                 rgb_keep: Optional[Image.Image] = None
                 if keep_rgb:

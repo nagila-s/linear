@@ -21,6 +21,7 @@ export default function HomePage() {
   const [linearize, setLinearize] = useState(true);
   const [mioloOnly, setMioloOnly] = useState(false);
   const [literario, setLiterario] = useState(false);
+  const [cardapio, setCardapio] = useState(false);
   const contextualize = false;
   const [lookup, setLookup] = useState<LookupState>({ loading: false, data: null });
   const [jobId, setJobId] = useState<string | null>(null);
@@ -236,6 +237,7 @@ export default function HomePage() {
                   if (!checked) {
                     setMioloOnly(false);
                     setLiterario(false);
+                    setCardapio(false);
                   }
                 }}
                 className="mt-0.5 h-6 w-6 shrink-0 appearance-none border-2 border-black bg-white checked:bg-black focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-1"
@@ -270,7 +272,10 @@ export default function HomePage() {
                 onChange={(event) => {
                   const checked = event.target.checked;
                   setLiterario(checked);
-                  if (checked) setLinearize(true);
+                  if (checked) {
+                    setLinearize(true);
+                    setCardapio(false);
+                  }
                 }}
                 aria-describedby="literario-hint"
                 className="mt-0.5 h-5 w-5 shrink-0 appearance-none border-2 border-black bg-white checked:bg-black focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-1"
@@ -280,6 +285,28 @@ export default function HomePage() {
                 <span id="literario-hint" className="mt-0.5 block text-xs font-normal text-zinc-600">
                   Sumário simples, títulos, parágrafos, notas de rodapé, figuras e ficha
                   catalográfica. Sem regras de atividade, quadro, boxe ou hino.
+                </span>
+              </span>
+            </label>
+            <label className="ml-8 flex items-start gap-2.5 border-l-2 border-zinc-300 pl-4 text-base text-zinc-800">
+              <input
+                type="checkbox"
+                checked={cardapio}
+                onChange={(event) => {
+                  const checked = event.target.checked;
+                  setCardapio(checked);
+                  if (checked) {
+                    setLinearize(true);
+                    setLiterario(false);
+                  }
+                }}
+                aria-describedby="cardapio-hint"
+                className="mt-0.5 h-5 w-5 shrink-0 appearance-none border-2 border-black bg-white checked:bg-black focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-1"
+              />
+              <span>
+                Cardápio
+                <span id="cardapio-hint" className="mt-0.5 block text-xs font-normal text-zinc-600">
+                  Usa o prompt de cardápio em todas as páginas e não classifica capa, sumário ou conteúdo.
                 </span>
               </span>
             </label>
@@ -310,7 +337,11 @@ export default function HomePage() {
                 setLiveMessage("Iniciando linearização...");
                 try {
                   const normalizedIsbn = isbn.trim() ? normalizeIsbn(isbn) : undefined;
-                  const payload = await startPdfJob(file, normalizedIsbn, { mioloOnly, literario });
+                  const payload = await startPdfJob(file, normalizedIsbn, {
+                    mioloOnly,
+                    literario,
+                    modelo: cardapio ? "cardapio" : undefined,
+                  });
                   setJobId(payload.jobId);
                   setProgressOpen(true);
                   setStatus({

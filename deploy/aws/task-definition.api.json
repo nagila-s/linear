@@ -33,9 +33,10 @@
         { "name": "BUCKET_PAGES", "value": "pages" },
         { "name": "BUCKET_FIGURES", "value": "figures" },
         { "name": "BUCKET_JSON", "value": "json" },
-        { "name": "OPENAI_MODEL_LINEARIZATION", "value": "gpt-5.2" },
-        { "name": "OPENAI_MODEL_CONTEXT", "value": "gpt-5.2" },
-        { "name": "PDF_RENDER_DPI", "value": "120" },
+        { "name": "OPENAI_MODEL_LINEARIZATION", "value": "gpt-6.1-terra" },
+        { "name": "OPENAI_MODEL_CONTEXT", "value": "gpt-6.1-terra" },
+        { "name": "OPENAI_MODEL_CLASSIFIER", "value": "gpt-6-luna" },
+        { "name": "PDF_RENDER_DPI", "value": "200" },
         { "name": "LINEAR_PROMPT_VERSION", "value": "v3" }
       ],
       "secrets": [

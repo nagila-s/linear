@@ -98,6 +98,7 @@ class OpenAIService:
         *,
         miolo_only: bool = False,
         literario: bool = False,
+        cardapio: bool = False,
         prompt_overrides: Optional[Dict[str, str]] = None,
     ) -> None:
         settings = get_settings()
@@ -106,6 +107,7 @@ class OpenAIService:
         self.settings = settings
         self.miolo_only = bool(miolo_only)
         self.literario = bool(literario)
+        self.cardapio = bool(cardapio)
         self.client = OpenAI(api_key=settings.openai_api_key)
         self.prompt_router = PromptRouter(
             settings.prompts_directory,
@@ -113,14 +115,15 @@ class OpenAIService:
             window_end=settings.classification_window_end,
             overrides=prompt_overrides,
             literario=self.literario,
+            cardapio=self.cardapio,
         )
-        self.prompt_router.pin_literary_case = self.literario and not self.miolo_only
+        self.prompt_router.pin_literary_case = self.literario and not self.miolo_only and not self.cardapio
         self._last_vision_incomplete = False
         self._last_vision_incomplete_reason: Optional[str] = None
 
     @property
     def prompt_routing_enabled(self) -> bool:
-        if self.miolo_only:
+        if self.miolo_only or self.cardapio:
             return False
         return bool(self.settings.prompt_routing_enabled)
 
@@ -858,6 +861,15 @@ class OpenAIService:
                 )
                 continue
 
+            if self.cardapio:
+                if attempt > 0:
+                    logger.info(
+                        "pagina=%s cardapio linearizado apos retry attempt=%s",
+                        page_number,
+                        attempt + 1,
+                    )
+                return data
+
             data = self._recover_if_incomplete(
                 page_png,
                 content,
@@ -941,6 +953,18 @@ class OpenAIService:
         page_type: Optional[str] = None,
         page_plain_text: Optional[str] = None,
     ) -> Dict[str, Any]:
+        if self.cardapio:
+            return {
+                "page_structure": self.linearize_page(
+                    page_png,
+                    prompt_version,
+                    page_number=page_number,
+                    total_pages=total_pages,
+                    page_type="cardapio",
+                    page_plain_text=page_plain_text,
+                ),
+                "figure_contexts": {},
+            }
         if page_type is None:
             page_type = self.resolve_page_type(
                 page_png,
@@ -1041,6 +1065,8 @@ class OpenAIService:
         page_number: Optional[int],
         total_pages: Optional[int],
     ) -> Tuple[str, str]:
+        if self.cardapio:
+            return self.prompt_router.get_prompt("cardapio"), "cardapio"
         if (
             not self.prompt_routing_enabled
             or page_number is None

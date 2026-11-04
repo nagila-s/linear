@@ -3,7 +3,7 @@ import os
 
 def converter_pdf_em_png(conteudo_pdf, pasta_saida, prefixo_arquivo, dpi=300):
     os.makedirs(pasta_saida, exist_ok=True)
-    imagens = convert_from_bytes(conteudo_pdf, dpi=dpi, fmt="png", grayscale=True)
+    imagens = convert_from_bytes(conteudo_pdf, dpi=dpi, fmt="png")
 
     for i, img in enumerate(imagens):
         nome_arquivo = f"{prefixo_arquivo}_p{i+1:03}.png"

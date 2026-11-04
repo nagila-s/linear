@@ -24,17 +24,18 @@ class Settings(BaseSettings):
     bucket_json: str = "json"
 
     openai_api_key: str = Field(default="")
-    openai_model_linearization: str = "gpt-5.2-pro"
-    openai_model_context: str = "gpt-5.2-pro"
-    openai_model_classifier: str = "gpt-4.1-mini"
+    openai_model_linearization: str = "gpt-6.1-terra"
+    openai_model_context: str = "gpt-6.1-terra"
+    openai_model_classifier: str = "gpt-6-luna"
     text_gap_fill_enabled: bool = True
     text_gap_fill_max_output_tokens: int = 16384
     openai_combined_mode: bool = False
     openai_prefer_responses_api: bool = True
-    # none | low | medium | high | xhigh — gpt-5.x na Responses API
+    # none | low | medium | high | xhigh | max — gpt-6 na Responses API
     # none = padrao barato; medium/high multiplica custo por pagina (reasoning tokens)
     openai_reasoning_effort: str = "none"
-    classifier_max_output_tokens: int = 16
+    # gpt-6-luna conta o raciocínio interno neste teto. 16 esgota antes da palavra.
+    classifier_max_output_tokens: int = 4096
     # 0 = teto do modelo (128000). Valores menores cortam capa/sumário/ficha.
     linearize_max_output_tokens: int = 0
     prompt_routing_enabled: bool = True
@@ -63,7 +64,7 @@ class Settings(BaseSettings):
     worker_max_attempts: int = 3
     worker_stale_job_minutes: int = 120
     linear_pipeline_only: bool = False
-    pdf_render_dpi: int = 150
+    pdf_render_dpi: int = 200
     # Quantas páginas rasterizar por vez (limita pico de RAM em livros inteiros)
     pdf_render_batch_size: int = 10
     # Extrator de figuras: "legacy" (pdf_images.py) ou "v3" (src/vendor/pdf_figure_extractor).

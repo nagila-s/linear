@@ -90,6 +90,7 @@ class UploadInitRequest(BaseModel):
     miolo_only: bool = False
     literario: bool = False
     test_run: bool = False
+    modelo: Optional[str] = None
     prompt_overrides: Optional[Dict[str, str]] = None
 
 
@@ -114,6 +115,7 @@ class UploadCompleteRequest(BaseModel):
     miolo_only: bool = False
     literario: bool = False
     test_run: bool = False
+    modelo: Optional[str] = None
     prompt_overrides: Optional[Dict[str, str]] = None
     page_count: Optional[int] = Field(default=None, ge=1, le=5000)
 

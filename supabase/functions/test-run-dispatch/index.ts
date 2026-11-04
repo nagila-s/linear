@@ -181,7 +181,7 @@ async function classifyPage(
     const classifier = (snapshot["classificador.txt"] || "").trim();
     if (!classifier) throw new Error("Prompt ausente no snapshot: classificador.txt");
     const imageUrl = await signedUrl(supabase, page.page_storage_path);
-    const model = Deno.env.get("OPENAI_MODEL_CLASSIFIER") || "gpt-4.1-mini";
+    const model = Deno.env.get("OPENAI_MODEL_CLASSIFIER") || "gpt-6-luna";
     const raw = await askVisionText({
       prompt: classifier,
       imageUrl,
@@ -224,7 +224,7 @@ async function linearizePage(
   const { prompt, promptFile } = getPromptFromSnapshot(snapshot, pageType);
   const promptHash = await sha256Hex(prompt);
   const imageUrl = await signedUrl(supabase, page.page_storage_path);
-  const model = Deno.env.get("OPENAI_MODEL_LINEARIZATION") || "gpt-5.2";
+  const model = Deno.env.get("OPENAI_MODEL_LINEARIZATION") || "gpt-6.1-terra";
 
   await supabase
     .from("test_pages")
@@ -320,7 +320,7 @@ async function fillTextGapsIfNeeded(
   const report = analyzeTextGaps(content, plain);
   if (!report.needsFill) return content;
 
-  const model = Deno.env.get("OPENAI_MODEL_CLASSIFIER") || "gpt-4.1-mini";
+  const model = Deno.env.get("OPENAI_MODEL_CLASSIFIER") || "gpt-6-luna";
   const maxTokens = Number(Deno.env.get("TEXT_GAP_FILL_MAX_OUTPUT_TOKENS") || 16384);
   try {
     const patched = await askVisionJson({
