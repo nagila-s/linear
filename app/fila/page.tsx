@@ -150,7 +150,7 @@ export default function FilaPage() {
           </div>
         ) : null}
 
-        <div className="overflow-hidden border-2 border-black">
+        <div className="overflow-x-auto border-2 border-black">
           <table className="w-full text-left text-sm">
             <caption className="sr-only">
               {tab === "open" ? "Livros em aberto na fila" : "Livros finalizados"}
@@ -229,8 +229,8 @@ export default function FilaPage() {
                           </td>
                         ) : null}
                         <td className="px-3 py-3">
-                          <div className="font-semibold text-black">{item.title}</div>
-                          <div className="mt-0.5 font-mono text-xs text-zinc-500">{item.isbn || item.id}</div>
+                          <div className="font-semibold text-black [overflow-wrap:anywhere]">{item.title}</div>
+                          <div className="mt-0.5 font-mono text-xs text-zinc-500 [overflow-wrap:anywhere]">{item.isbn || item.id}</div>
                           <div className="mt-1 text-xs text-zinc-600">{item.message}</div>
                         </td>
                         <td className="px-3 py-3">
@@ -258,7 +258,7 @@ export default function FilaPage() {
                               {item.canDownload ? (
                                 <a
                                   href={`/api/books/${item.id}/download?filename=${encodeURIComponent(slugify(item.title) || "livro")}.json`}
-                                  className="inline-block border-2 border-black px-2 py-1 text-xs font-semibold hover:bg-zinc-100"
+                                  className="inline-block whitespace-nowrap border-2 border-black px-2 py-1 text-xs font-semibold hover:bg-zinc-100"
                                 >
                                   Baixar JSON
                                 </a>
