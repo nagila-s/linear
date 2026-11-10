@@ -6,7 +6,8 @@ Regras:
 - Cada linha da lista de papéis é um item com rótulo e valor em string simples (ex.: "Direção executiva: Nome da pessoa"). Não marque negrito/itálico — o pós-processamento aplica.
 - Links, e-mails e endereços eletrônicos: tipo "link".
 - Endereços físicos, telefones e textos legais: tipo "paragrafo".
-- A ficha CIP (dados de catalogação): tipo "ficha_catalografica".
+- A ficha CIP (dados de catalogação): tipo "ficha_catalografica", com "campo" e "valor". Quando um dado não tiver rótulo claro, use "texto" com o conteúdo literal.
+- Nunca classifique como "tabela", "quadro" ou "boxe_complementar", mesmo que a ficha esteja formatada em colunas ou caixas.
 
 {{SHARED_RULES}}
 
@@ -27,10 +28,10 @@ Campo "pagina": número inteiro impresso no livro, ou "[sem página]" se não es
         }
       ]
     },
-    { "tipo": "paragrafo", "texto": "Todos os direitos reservados por Saraiva Educação S.A." },
-    { "tipo": "paragrafo", "texto": "Alameda Santos, 960, 4º andar\nSão Paulo – SP – CEP 01418-002\nTel.: 4003-3061" },
-    { "tipo": "link", "texto": "www.edocente.com.br" },
-    { "tipo": "link", "texto": "saceditorasaraiva@somoseducacao.com.br" },
+    { "tipo": "paragrafo", "texto": "Todos os direitos reservados por Nome da Editora." },
+    { "tipo": "paragrafo", "texto": "Rua Exemplo, 100\nCidade – UF – CEP 00000-000\nTel.: (00) 0000-0000" },
+    { "tipo": "link", "texto": "www.site-da-editora.com.br" },
+    { "tipo": "link", "texto": "contato@editora.com.br" },
     {
       "tipo": "ficha_catalografica",
       "conteudo": [

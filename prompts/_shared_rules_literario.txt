@@ -18,7 +18,7 @@ Exemplo (JSON válido):
 - Tipos de bloco permitidos: titulo_1, titulo_2, titulo_3, titulo_4, titulo_5, paragrafo, lista, item, link, sumario, nota_rodape, imagem, fonte, ficha_catalografica.
 - Use \n para quebras de linha dentro de strings JSON.
 - Aspas de citação fazem parte do texto. Transcreva-as dentro da string JSON. Prefira aspas tipográficas (“ ”) no valor; se usar aspas ASCII, escape com \". Nunca omita o trecho entre aspas.
-- CITAÇÕES E EXCERTOS: qualquer trecho entre aspas — tipográficas (“ ”) OU gráficas grandes nas bordas do bloco — deve ser transcrito POR EXTENSO, inclusive poemas e prosa de várias linhas. Use "titulo_4" para o bloco citado quando a página marcar um excerto; no miolo literário, um "paragrafo" com o texto completo também vale. Nunca resuma, corte no meio nem substitua por "[trecho omitido]".
+- CITAÇÕES E EXCERTOS: qualquer trecho entre aspas — tipográficas (“ ”) OU gráficas grandes nas bordas do bloco — deve ser transcrito POR EXTENSO, inclusive poemas e prosa de várias linhas. O título impresso do excerto, se houver, vai em "titulo_4"; o corpo vai sempre em "paragrafo" (\n nas quebras de verso). Nunca resuma, corte no meio nem substitua por "[trecho omitido]".
 - Use \n para quebras de linha dentro de strings JSON. Nunca insira quebras de linha literais dentro de uma string.
 - Página em duas colunas: leia a coluna esquerda inteira e depois a direita. Nunca ignore uma coluna.
 - "conteudo" não pode ficar vazio se a página tiver texto legível.
@@ -31,8 +31,9 @@ Exemplo (JSON válido):
 - "contexto_pedagogico" é null, salvo menção explícita à figura no texto da página.
 
 [FONTES]
-- Use tipo "fonte" apenas para referências bibliográficas completas: Autor. Título. Editora, Ano.
-- Créditos de imagem nunca entram em nenhum campo (nem "fonte", nem "legenda", nem "texto"): fotógrafo, agência, "Nome/Banco", bancos (Shutterstock, Getty, Alamy, iStock) e linhas como "Acervo da editora".
+- "fonte" é a referência de onde veio um texto, documento, dado ou obra reproduzida (autor, obra, editora, instituição, coleção ou acervo, periódico, URL, data), completa ou parcial, transcrita como está impressa. Ex.: "FERREZ, Marc. Coleção Instituto Moreira Salles, 1906.". Toda fonte, inclusive a de imagem, é um bloco "fonte" logo após o elemento ao qual pertence; o bloco "imagem" não tem campo "fonte".
+- Créditos de imagem nunca entram em nenhum campo (nem "fonte", nem "legenda", nem "texto"). Crédito é o texto pequeno AO LADO da imagem (muitas vezes na vertical), separado da legenda, em geral "Nome/Agência" ou "Nome/Banco" (ex.: "João Silva/Shutterstock"), inclusive bancos de imagem sozinhos e "Acervo da editora" nessa posição.
+- O texto logo ABAIXO da imagem, com a mesma fonte da legenda, é legenda e é mantido no campo "legenda", mesmo que traga acervo, coleção ou instituição.
 
 [NOTAS]
 - Nota de rodapé vai em tipo "nota_rodape", com o marcador e o texto visíveis. Não incorpore a nota no parágrafo.

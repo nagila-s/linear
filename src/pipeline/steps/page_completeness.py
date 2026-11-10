@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any
 
 from src.pipeline.steps.image_credits import strip_image_credits
@@ -62,6 +63,21 @@ MIN_COVERAGE_RATIO = 0.40
 MAX_PLAIN_TEXT_CHARS = 12000
 
 
+# Pontilhado de sumário/índice ("Capítulo 1 ........ 16"): 4+ pontos seguidos, para não
+# descontar reticências comuns ("...").
+_DOT_LEADER_RE = re.compile(r"(?:[.…·]\s?){4,}")
+
+
+def pdf_text_char_count(plain_text: str | None) -> int:
+    """Tamanho do texto nativo para a checagem de completude, sem pontilhados.
+
+    Em sumários os pontilhados chegam a ~65% dos caracteres e a IA (corretamente)
+    não os transcreve; contá-los faria toda transcrição parecer incompleta.
+    """
+    text = _DOT_LEADER_RE.sub(" ", plain_text or "")
+    return len(text.strip())
+
+
 def plain_text_from_page_styles(page: PageTextStyles | None) -> str:
     """Concatena runs tipográficos em texto plano para apoio à LLM."""
     if page is None or not page.runs:
@@ -78,12 +94,16 @@ def format_page_text_context(plain_text: str) -> str:
         text = text[: MAX_PLAIN_TEXT_CHARS - 20] + "\n...[texto cortado]..."
     return (
         "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "[TEXTO NATIVO EXTRAÍDO DO PDF — REFERÊNCIA OBRIGATÓRIA]\n"
+        "[TEXTO NATIVO DO PDF — APOIO, SUBORDINADO ÀS REGRAS ACIMA]\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "A imagem continua sendo a fonte da hierarquia editorial (tipos de bloco, ordem, "
-        "quadros, figuras). O texto abaixo é a camada nativa do PDF: use-o para NÃO omitir "
-        "trechos, especialmente em páginas de duas colunas, poemas e citações com aspas "
-        "gráficas. Transcreva o conteúdo completo; não invente o que não estiver na página.\n\n"
+        "O texto abaixo foi extraído da camada de texto do PDF, na ordem em que o arquivo o "
+        "guarda (que pode não ser a ordem de leitura). Use-o só como apoio: para conferir a "
+        "grafia e para não deixar de fora nenhum trecho que as regras acima mandam transcrever.\n"
+        "- A imagem define o que é conteúdo, a hierarquia, os tipos de bloco e a ordem de leitura.\n"
+        "- As regras acima prevalecem sobre este texto. Ele pode conter itens que essas regras "
+        "mandam omitir — números de página, cabeçalhos e rodapés, créditos de imagem, "
+        "pontilhados de sumário, texto de miniaturas de páginas. Não os transcreva.\n"
+        "- Não acrescente nada que não esteja visível na página.\n\n"
         f"{text}\n"
     )
 
@@ -337,32 +357,109 @@ def expand_cut_texts_from_plain(
                     break
         return window.strip() or value
 
-    def walk(node: Any) -> Any:
-        if isinstance(node, dict):
-            out: dict[str, Any] = {}
-            for key, value in node.items():
-                if key in _TEXT_KEYS and isinstance(value, str):
-                    out[key] = expand_string(value)
-                elif key in _TEXT_KEYS and isinstance(value, list):
-                    new_list = []
-                    for item in value:
-                        if isinstance(item, dict) and isinstance(item.get("trecho"), str):
-                            new_item = dict(item)
-                            new_item["trecho"] = expand_string(item["trecho"])
-                            new_list.append(new_item)
-                        elif isinstance(item, str):
-                            new_list.append(expand_string(item))
-                        else:
-                            new_list.append(walk(item))
-                    out[key] = new_list
-                else:
-                    out[key] = walk(value)
-            return out
-        if isinstance(node, list):
-            return [walk(item) for item in node]
-        return node
+    # Passo 1: todos os textos da página, na ordem da árvore, para saber o que
+    # vem depois de cada campo.
+    ordered: list[str] = []
+    _walk_strings(page_structure, lambda s, _expandable: ordered.append(s) or s)
+    norm_fields = [_norm_words(s) for s in ordered]
+    joined_parts: list[str] = []
+    ends: list[int] = []
+    pos = 0
+    for nf in norm_fields:
+        if nf:
+            joined_parts.append(nf)
+            pos += len(nf) + 1
+        ends.append(pos)
+    joined = " ".join(joined_parts)
 
-    return walk(page_structure)
+    # Passo 2: expande só quando a continuação ainda não está nos campos seguintes.
+    counter = [0]
+
+    def visit(value: str, expandable: bool) -> str:
+        i = counter[0]
+        counter[0] += 1
+        if not expandable:
+            return value
+        new_value = expand_string(value)
+        if new_value == value:
+            return value
+        following = joined[ends[i] : ends[i] + _FOLLOWING_WINDOW]
+        if _continuation_already_present(value, new_value, following):
+            return value
+        return new_value
+
+    return _walk_strings(page_structure, visit)
+
+
+# Quantos caracteres (normalizados) depois do campo procurar a continuação.
+_FOLLOWING_WINDOW = 1000
+_PROBE_MIN_CHARS = 20
+_PROBE_MIN_WORDS = 3
+_PROBE_TOO_SHORT = 12
+_NON_WORD_RE = re.compile(r"[^\w]+", re.UNICODE)
+
+
+def _norm_words(text: str) -> str:
+    """Casefold, sem acento, só letras/números separados por espaço — para comparar trechos."""
+    s = unicodedata.normalize("NFKD", text or "")
+    s = "".join(ch for ch in s if not unicodedata.combining(ch))
+    s = _NON_WORD_RE.sub(" ", s.casefold())
+    return " ".join(s.split())
+
+
+def _continuation_already_present(old: str, new: str, following_norm: str) -> bool:
+    """
+    True se o texto que a expansão acrescentaria já está transcrito logo depois
+    deste campo no JSON (ex.: nome da ficha técnica seguido do próximo cargo,
+    termo de glossário seguido da definição). Nesses casos o campo não estava
+    cortado — expandir duplicaria texto.
+    """
+    old_n = _norm_words(old)
+    new_n = _norm_words(new)
+    if new_n.startswith(old_n):
+        tail = new_n[len(old_n) :]
+    else:
+        tail = new_n[len(old_n) :] if len(new_n) > len(old_n) else ""
+    words = tail.split()
+    if not words:
+        return False
+    probe_words: list[str] = []
+    for w in words:
+        probe_words.append(w)
+        probe = " ".join(probe_words)
+        if len(probe) >= _PROBE_MIN_CHARS and len(probe_words) >= _PROBE_MIN_WORDS:
+            break
+    probe = " ".join(probe_words)
+    if len(probe) < _PROBE_TOO_SHORT:
+        return False
+    return probe in following_norm
+
+
+def _walk_strings(node: Any, visit: Any, *, expandable_ctx: bool = False) -> Any:
+    """
+    Percorre a árvore e chama visit(texto, expandable) em cada string, na ordem.
+    `expandable` é True para campos textuais (_TEXT_KEYS) e itens/trechos dentro deles.
+    Chaves de metadado (_SKIP_COUNT_KEYS) são preservadas sem visita.
+    """
+    if isinstance(node, dict):
+        # Itens de sumário são curtos e terminam sem pontuação: parecem "cortados", mas
+        # completá-los com o texto nativo cola pontilhados e as entradas seguintes.
+        in_toc = str(node.get("tipo") or "").strip().lower() == "sumario"
+        out: dict[str, Any] = {}
+        for key, value in node.items():
+            if key in _SKIP_COUNT_KEYS:
+                out[key] = value
+                continue
+            if in_toc:
+                out[key] = _walk_strings(value, lambda s, _e: visit(s, False))
+                continue
+            out[key] = _walk_strings(value, visit, expandable_ctx=key in _TEXT_KEYS)
+        return out
+    if isinstance(node, list):
+        return [_walk_strings(item, visit, expandable_ctx=expandable_ctx) for item in node]
+    if isinstance(node, str):
+        return visit(node, expandable_ctx)
+    return node
 
 
 def is_linearization_incomplete(
@@ -438,6 +535,7 @@ def scaffold_page_from_plain_text(
     *,
     page_number: int | None = None,
     printed_page: int | None = None,
+    page_type: str | None = None,
 ) -> dict[str, Any]:
     """Fallback determinístico: monta conteudo a partir do texto nativo do PDF.
 
@@ -470,7 +568,8 @@ def scaffold_page_from_plain_text(
         blocks = [{"tipo": "texto", "texto": text}]
 
     page: dict[str, Any] = {
-        "tipo_pagina": "conteudo",
+        # Mantém a classificação já feita (sumário, ficha…); só cai em conteudo sem ela.
+        "tipo_pagina": (page_type or "").strip() or "conteudo",
         "conteudo": blocks,
         "linearizacao_fallback": "texto_nativo_pdf",
     }

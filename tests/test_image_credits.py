@@ -77,3 +77,34 @@ class ImageCreditTests(unittest.TestCase):
         fontes = [b for b in cleaned["conteudo"] if b.get("tipo") == "fonte"]
         self.assertEqual(len(fontes), 1)
         self.assertIn("2007", fontes[0]["texto"])
+
+
+class CaptionCreditTests(unittest.TestCase):
+    def test_caption_keeps_collection_info(self) -> None:
+        legenda = "Casa em Petrópolis, Rio de Janeiro, 1885. MARC FERREZ/ACERVO INSTITUTO MOREIRA SALLES"
+        cleaned = omit_image_credits({"tipo": "imagem", "legenda": legenda})
+        self.assertEqual(cleaned["legenda"], legenda)
+
+    def test_caption_drops_image_bank_credit(self) -> None:
+        cleaned = omit_image_credits(
+            {"tipo": "imagem", "legenda": "Crianças brincando no parque. JOÃO SILVA/SHUTTERSTOCK"}
+        )
+        self.assertEqual(cleaned["legenda"], "Crianças brincando no parque.")
+
+    def test_text_outside_caption_still_drops_slash_credit(self) -> None:
+        cleaned = omit_image_credits({"tipo": "paragrafo", "texto": "Comente. CESAR DINIZ/PULSAR IMAGENS"})
+        self.assertNotIn("PULSAR", cleaned["texto"])
+
+
+class CaseInsensitiveGapTests(unittest.TestCase):
+    def test_all_caps_pdf_vs_normalized_json_is_not_missing(self) -> None:
+        pdf = "A ÁGUA É MUITO IMPORTANTE PARA TODOS OS SERES VIVOS DO PLANETA TERRA E DEVEMOS CUIDAR DELA."
+        json_text = "A água é muito importante para todos os seres vivos do planeta Terra e devemos cuidar dela."
+        self.assertEqual(find_missing_pdf_spans(pdf, json_text), [])
+
+    def test_missing_span_keeps_pdf_case(self) -> None:
+        pdf = "Primeira frase do texto que está no JSON. SEGUNDA FRASE QUE FALTOU NO JSON GERADO PELA IA."
+        json_text = "Primeira frase do texto que está no JSON."
+        spans = find_missing_pdf_spans(pdf, json_text)
+        self.assertTrue(spans)
+        self.assertIn("SEGUNDA FRASE", spans[0])

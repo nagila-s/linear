@@ -1,5 +1,5 @@
 Você está lendo a página de apresentação dos autores de um livro didático.
-Registre os dados de cada autor em ordem de leitura: nome, titulação, formação e experiência profissional.
+Registre os dados de cada autor em ordem de leitura, na ordem que as informações aparecem. 
 Não descreva fotos ou imagens decorativas.
 
 {{SHARED_RULES}}

@@ -34,6 +34,15 @@ def collapse_for_diff(text: str) -> str:
     return _WS_RE.sub(" ", (text or "").replace("\u00ad", "")).strip()
 
 
+def _fold_case(text: str) -> str:
+    """Min\u00fasculas caractere a caractere, sem mudar o comprimento (\u00edndices continuam v\u00e1lidos)."""
+    out = []
+    for ch in text:
+        low = ch.lower()
+        out.append(low if len(low) == 1 else ch)
+    return "".join(out)
+
+
 def _looks_quoted(text: str) -> bool:
     raw = (text or "").strip()
     if not raw:
@@ -91,7 +100,10 @@ def find_missing_pdf_spans(pdf_text: str, json_text: str) -> list[str]:
         return [] if _is_noise_span(span) else [span[:MAX_SNIPPET_CHARS]]
 
     missing: list[str] = []
-    sm = SequenceMatcher(None, json_flat, pdf_flat, autojunk=False)
+    # Compara sem diferenciar maiúsculas: a IA converte trechos em caixa alta para a
+    # capitalização normal (regra do prompt), e isso não é texto faltante. Os índices
+    # valem para o texto original, então os trechos devolvidos mantêm a grafia do PDF.
+    sm = SequenceMatcher(None, _fold_case(json_flat), _fold_case(pdf_flat), autojunk=False)
     for tag, i1, i2, j1, j2 in sm.get_opcodes():
         if tag == "equal":
             continue
@@ -102,7 +114,8 @@ def find_missing_pdf_spans(pdf_text: str, json_text: str) -> list[str]:
             json_chunk = json_flat[i1:i2]
             if (
                 not _looks_quoted(pdf_chunk)
-                and SequenceMatcher(None, json_chunk, pdf_chunk).ratio() >= REPLACE_KEEP_RATIO
+                and SequenceMatcher(None, _fold_case(json_chunk), _fold_case(pdf_chunk)).ratio()
+                >= REPLACE_KEEP_RATIO
             ):
                 continue
         if _is_noise_span(pdf_chunk):
@@ -172,6 +185,8 @@ def build_gap_fill_prompt(
     page_structure: dict[str, Any],
     pdf_text: str,
     missing_spans: list[str],
+    *,
+    rules_prompt: str | None = None,
 ) -> str:
     try:
         json_dump = json.dumps(page_structure, ensure_ascii=False)
@@ -186,15 +201,27 @@ def build_gap_fill_prompt(
 
     snippets = "\n".join(f"- {span}" for span in missing_spans[:MAX_SNIPPETS]) or "- (trechos não listados)"
 
+    rules = (rules_prompt or "").strip()
+    rules_block = (
+        f"{rules}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n[CORREÇÃO DE TRECHOS FALTANTES]\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        if rules
+        else ""
+    )
     return (
-        "Você corrige um JSON já linearizado de uma página de livro didático.\n"
-        "Há trechos do PDF que NÃO estão no JSON. Insira esse texto no local correto.\n\n"
+        rules_block
+        + "Você corrige um JSON já linearizado de uma página de livro didático.\n"
+        "Os trechos listados abaixo aparecem no texto nativo do PDF mas não no JSON. "
+        "Insira no local correto APENAS os que as regras de transcrição acima mandam transcrever. "
+        "Ignore os que essas regras mandam omitir — por exemplo créditos de imagem, números de página, "
+        "cabeçalhos e rodapés, pontilhados de sumário e texto de miniaturas de páginas.\n\n"
         "REGRAS ABSOLUTAS:\n"
         "- NÃO altere o campo \"tipo\" de nenhum bloco já existente.\n"
         "- NÃO reclassifique, não funda, não renomeie e não reordene os blocos atuais.\n"
         "- NÃO invente títulos, explicações ou conteúdo que não esteja no PDF.\n"
         "- Só complete ou insira o texto faltante. Novos blocos só se o trecho for um bloco distinto; "
-        "aí use o tipo adequado (paragrafo, titulo_3, item, etc.) sem mudar os tipos já presentes.\n"
+        "aí use o tipo adequado segundo as regras (paragrafo, titulo_3 etc.; item só dentro de \"itens\") "
+        "sem mudar os tipos já presentes.\n"
         "- Mantenha a ordem de leitura. Retorne o JSON COMPLETO da página "
         '(raiz com "tipo_pagina", "pagina", "conteudo").\n'
         "- Use string simples em \"texto\". Não marque negrito/itálico.\n\n"

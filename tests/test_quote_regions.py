@@ -36,7 +36,7 @@ class QuoteRegionTests(unittest.TestCase):
         self.assertTrue(regions[0].startswith("\u201c"))
         self.assertTrue(regions[0].endswith("\u201d"))
 
-    def test_restores_omitted_quote_as_titulo_4(self) -> None:
+    def test_restores_omitted_quote_as_paragrafo(self) -> None:
         page = {
             "tipo_pagina": "conteudo",
             "pagina": 1,
@@ -53,7 +53,8 @@ class QuoteRegionTests(unittest.TestCase):
         )
         assert restored is not None
         tipos = [b["tipo"] for b in restored["conteudo"]]
-        self.assertIn("titulo_4", tipos)
+        self.assertNotIn("titulo_4", tipos)
+        self.assertEqual(tipos.count("paragrafo"), 3)
         joined = " ".join(
             b["texto"] if isinstance(b.get("texto"), str) else "" for b in restored["conteudo"]
         )

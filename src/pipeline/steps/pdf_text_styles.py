@@ -115,18 +115,49 @@ def _font_alias_map(page: Any) -> dict[str, str]:
     return aliases
 
 
+# Texto de miniaturas de página ("Conheça seu livro") sai com letra de 1–4,6 pt;
+# texto corrido fica acima de 8 pt e créditos de imagem em ~3,8 pt.
+MINIATURE_FONT_MAX_PT = 5.0
+# Só descarta letra miúda quando ela domina a página (miniaturas). Em páginas comuns
+# ela é <5% (créditos, escala de mapa) e é mantida.
+MINIATURE_PAGE_MIN_SHARE = 0.5
+
+
+def _tiny_text_dominates(blocks: list[dict[str, Any]]) -> bool:
+    tiny = total = 0
+    for block in blocks:
+        if int(block.get("type") or 0) != 0:
+            continue
+        for line in block.get("lines") or []:
+            for span in line.get("spans") or []:
+                n = len(str(span.get("text") or "").strip())
+                total += n
+                if float(span.get("size") or 0) < MINIATURE_FONT_MAX_PT:
+                    tiny += n
+    return total > 0 and tiny / total >= MINIATURE_PAGE_MIN_SHARE
+
+
 def _iter_raw_spans(page: Any) -> list[tuple[str, str]]:
-    """Retorna (texto, estilo) por span na ordem de leitura do PyMuPDF."""
+    """Retorna (texto, estilo) por span na ordem de leitura do PyMuPDF.
+
+    Em páginas dominadas por miniaturas de outras páginas, o texto miúdo das
+    miniaturas é descartado: não é conteúdo da página e não deve ir ao prompt
+    nem entrar na checagem de completude.
+    """
     out: list[tuple[str, str]] = []
     aliases = _font_alias_map(page)
     data = page.get_text("dict")
-    for block in data.get("blocks") or []:
+    blocks = data.get("blocks") or []
+    drop_tiny = _tiny_text_dominates(blocks)
+    for block in blocks:
         if int(block.get("type") or 0) != 0:
             continue
         for line in block.get("lines") or []:
             for span in line.get("spans") or []:
                 text = str(span.get("text") or "")
                 if not text:
+                    continue
+                if drop_tiny and float(span.get("size") or 0) < MINIATURE_FONT_MAX_PT:
                     continue
                 font = str(span.get("font") or "")
                 extra = aliases.get(font, "")

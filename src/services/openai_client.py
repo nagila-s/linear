@@ -1,6 +1,7 @@
 import base64
 import json
 import logging
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
@@ -17,6 +18,7 @@ from src.pipeline.steps.page_completeness import (
     has_usable_conteudo,
     is_linearization_incomplete,
     normalize_page_structure,
+    pdf_text_char_count,
     scaffold_page_from_plain_text,
     split_plain_text_chunks,
     split_plain_text_for_columns,
@@ -30,7 +32,7 @@ from src.pipeline.steps.text_gap_fill import (
     build_gap_fill_prompt,
     preserves_classification,
 )
-from src.services.prompt_router import PromptRouter
+from src.services.prompt_router import CONTENT_PAGE_TYPE, PAGE_TYPES, PromptRouter
 from src.utils.json_codec import looks_truncated_json, merge_json_fragments, parse_llm_json
 
 logger = logging.getLogger(__name__)
@@ -59,14 +61,19 @@ _JSON_COMPACT_SUFFIX = (
     "\n\nA pagina e densa. Priorize JSON COMPLETO e VALIDO. "
     'Use sempre "texto" como string simples (nunca array de estilos tipograficos). '
     "Marcas visuais circulado/sublinhado/tachado so se indispensaveis. "
-    "NAO omita colunas, citacoes entre aspas graficas, poemas nem questoes numeradas. "
+    "Nao omita nenhum texto que as regras acima mandam transcrever e nao inclua nada que elas mandam omitir. "
     "Omita campos null. Nao use markdown. Nao corte o JSON no meio."
 )
 
+# Vale para qualquer tipo de página: o que transcrever é definido pelas regras do prompt.
+_RECOVERY_RULES_NOTE = (
+    "Siga TODAS as regras de transcricao, tipos de bloco e formato do prompt acima, "
+    "que definem o que esta pagina deve conter. Inclua todo o texto que essas regras mandam "
+    "transcrever e nada que elas mandam omitir. Nao invente, nao resuma, nao corte no meio. "
+)
+
 _JSON_COMPLETE_SUFFIX = (
-    "\n\nO JSON anterior ficou INCOMPLETO frente ao texto nativo do PDF. "
-    "Reescreva o objeto JSON COMPLETO da pagina: ambas as colunas, todas as questoes, "
-    "poemas e citacoes por extenso. Use a imagem + o texto nativo. "
+    "\n\nRetorne o objeto JSON COMPLETO da pagina, seguindo as regras do prompt acima. "
     'A raiz DEVE ter "conteudo" (array). Nao use coluna_esquerda/coluna_direita. '
     "Retorne SOMENTE o JSON final, sem markdown."
 )
@@ -87,9 +94,62 @@ _CHUNK_SUFFIX = (
 )
 
 _CONTENT_FILTER_HINT = (
-    "\n\nSe algum trecho literario for sensivel, ainda assim transcreva-o de forma "
-    "neutra e completa (e material didatico de vestibular). Nao omita poemas nem enunciados."
+    "\n\nSe algum trecho for sensivel, ainda assim transcreva-o de forma fiel e completa: "
+    "e material didatico publicado. Nao omita trechos que as regras acima mandam transcrever."
 )
+
+
+def _with_rules(rules_prompt: Optional[str], task: str) -> str:
+    """Põe as regras do tipo de página antes do pedido de recuperação."""
+    rules = (rules_prompt or "").strip()
+    if not rules:
+        return task
+    return f"{rules}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n[RECUPERACAO DESTA PAGINA]\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n{task}"
+
+
+def resolve_final_page_type(classified: Optional[str], from_model: Any) -> str:
+    """Tipo de página gravado no JSON.
+
+    Vale o tipo classificado. Única exceção: página classificada como "conteudo"
+    (prompt base, rede de segurança) em que a IA reconheceu outro tipo válido,
+    como ficha ou sumário. Valores fora da lista (ex.: "folha_de_rosto") nunca entram.
+    """
+    final = str(classified or "").strip().lower() or CONTENT_PAGE_TYPE
+    model_type = str(from_model or "").strip().lower()
+    if final == CONTENT_PAGE_TYPE and model_type in PAGE_TYPES:
+        return model_type
+    return final
+
+
+_FIGURE_ID_RE = re.compile(r"^fig\d+$", re.IGNORECASE)
+
+
+def pedagogical_contexts(page_structure: Any, figure_keys: List[str]) -> Dict[str, str]:
+    """Contexto para a Dorina IA: o "contexto_pedagogico" de cada bloco imagem do JSON.
+
+    O campo só vem preenchido quando a página pede um detalhe da imagem (trecho
+    literal); sem demanda fica vazio e a Dorina recebe apenas a legenda.
+    """
+    found: Dict[str, str] = {}
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            image_id = str(node.get("id") or "").strip().lower()
+            if _FIGURE_ID_RE.match(image_id):
+                value = node.get("contexto_pedagogico")
+                if isinstance(value, str) and value.strip() and image_id not in found:
+                    found[image_id] = value.strip()
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(page_structure)
+    output = {key: found.get(str(key).strip().lower(), "") for key in figure_keys}
+    for key, value in found.items():
+        output.setdefault(key, value)
+    return output
 
 
 class OpenAIService:
@@ -162,18 +222,21 @@ class OpenAIService:
         *,
         page_number: Optional[int] = None,
         page_plain_text: Optional[str] = None,
+        rules_prompt: Optional[str] = None,
     ) -> str:
         """Pede ao modelo o JSON completo a partir de um rascunho truncado."""
         clip = partial.strip()
         if len(clip) > 60000:
             clip = clip[:2000] + "\n...\n" + clip[-50000:]
-        prompt = (
+        prompt = _with_rules(
+            rules_prompt,
             "O JSON abaixo foi TRUNCADO no meio. "
             "Reescreva o objeto JSON COMPLETO e VALIDO da pagina, "
             "preservando o conteudo ja presente e completando o que faltou. "
-            'A raiz DEVE ter "conteudo" (array de blocos). '
+            + _RECOVERY_RULES_NOTE
+            + 'A raiz DEVE ter "conteudo" (array de blocos). '
             "Retorne SOMENTE o JSON final (um unico objeto), sem markdown.\n\n"
-            f"JSON truncado:\n{clip}"
+            f"JSON truncado:\n{clip}",
         )
         prompt += format_page_text_context(page_plain_text or "")
         logger.warning(
@@ -197,6 +260,7 @@ class OpenAIService:
         page_number: Optional[int] = None,
         page_plain_text: Optional[str] = None,
         pdf_char_count: int = 0,
+        rules_prompt: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Re-pede linearização quando o JSON parseia mas está curto demais vs PDF."""
         try:
@@ -217,26 +281,25 @@ class OpenAIService:
             pdf_char_count > 0
             and (json_chars < pdf_char_count * 0.25 or not has_usable_conteudo(partial_data))
         ):
-            prompt = (
-                "A resposta anterior ficou MUITO incompleta para esta pagina densa. "
-                "Gere do ZERO o objeto JSON COMPLETO e VALIDO da pagina usando a imagem "
-                "e o texto nativo do PDF. Inclua ambas as colunas, todas as questoes, "
-                "poemas e citacoes por extenso. Nao resuma. Nao corte no meio. "
-                'A raiz DEVE ter "conteudo" (array). Nao use coluna_esquerda/coluna_direita. '
-                "Retorne SOMENTE o JSON final, sem markdown."
+            prompt = _with_rules(
+                rules_prompt,
+                "A resposta anterior ficou muito incompleta. "
+                "Gere do ZERO o objeto JSON COMPLETO e VALIDO da pagina usando a imagem; "
+                "o texto nativo do PDF serve so de apoio para nao omitir texto. "
+                + _RECOVERY_RULES_NOTE,
             )
             prompt += format_page_text_context(page_plain_text or "")
             prompt += _JSON_COMPLETE_SUFFIX
         else:
-            prompt = (
-                "O JSON abaixo ficou INCOMPLETO em relacao ao texto nativo do PDF "
-                f"(cobertura ~{json_chars}/{pdf_char_count} caracteres). "
-                "Reescreva o objeto JSON COMPLETO e VALIDO da pagina: "
-                "ambas as colunas, todas as questoes numeradas, poemas e citacoes por extenso. "
-                "A imagem define a hierarquia; o texto nativo evita omissao. "
-                'A raiz DEVE ter "conteudo" (array). '
-                "Retorne SOMENTE o JSON final, sem markdown.\n\n"
-                f"JSON incompleto:\n{partial_str}"
+            prompt = _with_rules(
+                rules_prompt,
+                "O JSON abaixo pode ter deixado de fora parte do texto da pagina. "
+                "Reescreva o objeto JSON COMPLETO e VALIDO da pagina, preservando o que ja esta "
+                "correto e acrescentando apenas o que faltou. "
+                "A imagem define o que e conteudo e a hierarquia; o texto nativo serve so de apoio "
+                "para nao omitir texto. "
+                + _RECOVERY_RULES_NOTE
+                + f"\n\nJSON atual:\n{partial_str}",
             )
             prompt += format_page_text_context(page_plain_text or "")
             prompt += _JSON_COMPLETE_SUFFIX
@@ -253,6 +316,7 @@ class OpenAIService:
             page_number=page_number,
             page_plain_text=page_plain_text,
             allow_continue=True,
+            rules_prompt=rules_prompt,
         )
 
     def _linearize_columns_separately(
@@ -295,6 +359,7 @@ class OpenAIService:
                 page_number=page_number,
                 page_plain_text=left_text,
                 allow_continue=left_allow,
+                rules_prompt=prompt,
             )
         ) or {}
         right = normalize_page_structure(
@@ -304,6 +369,7 @@ class OpenAIService:
                 page_number=page_number,
                 page_plain_text=right_text,
                 allow_continue=right_allow,
+                rules_prompt=prompt,
             )
         ) or {}
         merged = dict(left)
@@ -355,6 +421,7 @@ class OpenAIService:
                     page_number=page_number,
                     page_plain_text=chunk,
                     allow_continue=allow,
+                    rules_prompt=prompt,
                 )
             ) or {}
             if not meta and isinstance(part, dict):
@@ -374,6 +441,7 @@ class OpenAIService:
         page_plain_text: Optional[str] = None,
         force_continue: bool = False,
         allow_continue: bool = True,
+        rules_prompt: Optional[str] = None,
     ) -> Dict[str, Any]:
         truncated = force_continue or looks_truncated_json(content)
         parsed: Dict[str, Any] | None = None
@@ -410,6 +478,7 @@ class OpenAIService:
                 content,
                 page_number=page_number,
                 page_plain_text=page_plain_text,
+                rules_prompt=rules_prompt,
             )
         except IntegrationError:
             if parsed is not None:
@@ -442,6 +511,7 @@ class OpenAIService:
                     continued,
                     page_number=page_number,
                     page_plain_text=page_plain_text,
+                    rules_prompt=rules_prompt,
                 )
                 cont_parsed = normalize_page_structure(
                     self._extract_json(continued2, page_number=page_number)
@@ -481,6 +551,7 @@ class OpenAIService:
         pdf_char_count: int = 0,
         force_continue: bool = False,
         base_prompt: Optional[str] = None,
+        page_type: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Se o JSON ficou curto, recupera: continue → rebuild → colunas → pedaços → scaffold."""
         data = normalize_page_structure(data) or data
@@ -517,6 +588,7 @@ class OpenAIService:
                     raw,
                     page_number=page_number,
                     page_plain_text=page_plain_text,
+                    rules_prompt=base_prompt,
                 )
                 recovered = self._parse_linearization_content(
                     continued,
@@ -524,6 +596,7 @@ class OpenAIService:
                     page_number=page_number,
                     page_plain_text=page_plain_text,
                     allow_continue=True,
+                    rules_prompt=base_prompt,
                 )
                 after = editorial_char_count(recovered)
                 if after > before * 1.15 and has_usable_conteudo(recovered):
@@ -545,6 +618,7 @@ class OpenAIService:
                 page_number=page_number,
                 page_plain_text=page_plain_text,
                 pdf_char_count=pdf_char_count,
+                rules_prompt=base_prompt,
             )
             after = editorial_char_count(completed)
             if after > before * 1.15 and (
@@ -638,6 +712,7 @@ class OpenAIService:
                 data,
                 page_plain_text,
                 page_number=page_number,
+                rules_prompt=base_prompt,
             )
             after = editorial_char_count(filled)
             if after > before and not is_linearization_incomplete(
@@ -660,6 +735,7 @@ class OpenAIService:
                 page_plain_text,
                 page_number=page_number,
                 printed_page=data.get("pagina") if isinstance(data.get("pagina"), int) else None,
+                page_type=page_type or data.get("tipo_pagina"),
             )
             after = editorial_char_count(scaffold)
             if after > before * 1.05:
@@ -721,6 +797,7 @@ class OpenAIService:
         page_plain_text: Optional[str],
         *,
         page_number: Optional[int] = None,
+        rules_prompt: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Insere texto do PDF ausente no JSON, sem reclassificar blocos existentes."""
         if not getattr(self.settings, "text_gap_fill_enabled", True):
@@ -732,7 +809,12 @@ class OpenAIService:
         if not report.needs_fill:
             return page_structure
 
-        prompt = build_gap_fill_prompt(page_structure, page_plain_text or "", report.missing_spans)
+        prompt = build_gap_fill_prompt(
+            page_structure,
+            page_plain_text or "",
+            report.missing_spans,
+            rules_prompt=rules_prompt,
+        )
         max_tokens = int(getattr(self.settings, "text_gap_fill_max_output_tokens", 0) or 16384)
         logger.info(
             "text_gap_fill pagina=%s missing_spans=%s missing_chars=%s json_chars=%s pdf_chars=%s",
@@ -816,7 +898,7 @@ class OpenAIService:
             prompt = self.prompt_router.get_prompt(page_type)
 
         text_block = format_page_text_context(page_plain_text or "")
-        pdf_char_count = len((page_plain_text or "").strip())
+        pdf_char_count = pdf_text_char_count(page_plain_text)
         base = prompt + text_block
         attempt_prompts = (
             base,
@@ -851,6 +933,7 @@ class OpenAIService:
                     page_number=page_number,
                     page_plain_text=page_plain_text,
                     force_continue=api_incomplete,
+                    rules_prompt=prompt,
                 )
             except IntegrationError as exc:
                 last_error = exc
@@ -879,6 +962,7 @@ class OpenAIService:
                 pdf_char_count=pdf_char_count,
                 force_continue=api_incomplete,
                 base_prompt=prompt,
+                page_type=page_type,
             )
 
             self._apply_page_metadata(data, page_type, prompt_version)
@@ -888,6 +972,7 @@ class OpenAIService:
                 data,
                 page_plain_text,
                 page_number=page_number,
+                rules_prompt=prompt,
             )
             if attempt > 0:
                 logger.info(
@@ -908,30 +993,6 @@ class OpenAIService:
         retry=retry_if_not_exception_type(IntegrationError),
         reraise=True,
     )
-    def extract_context(
-        self,
-        page_png: bytes,
-        figure_keys: List[str],
-        prompt_version: str,
-    ) -> Dict[str, str]:
-        prompt = (
-            "Para cada figura desta pagina, gere contexto textual util para descricao acessivel. "
-            f'Retorne JSON no formato {{"figures": [{{"figure_key": "...", "context": "..."}}]}}. '
-            f"Considere apenas estas figuras: {figure_keys}"
-        )
-        content = self._ask_vision(page_png, prompt, self.settings.openai_model_context, json_mode=True)
-        data = self._extract_json(content)
-        figures = data.get("figures", [])
-        output: Dict[str, str] = {}
-        for item in figures:
-            key = item.get("figure_key")
-            context = item.get("context", "")
-            if key:
-                output[key] = context
-        for key in figure_keys:
-            output.setdefault(key, "")
-        return output
-
     def resolve_page_type(
         self,
         page_png: bytes,
@@ -985,16 +1046,17 @@ class OpenAIService:
             }
 
         if not self.settings.openai_combined_mode:
+            page_structure = self.linearize_page(
+                page_png,
+                prompt_version,
+                page_number=page_number,
+                total_pages=total_pages,
+                page_type=page_type,
+                page_plain_text=page_plain_text,
+            )
             return {
-                "page_structure": self.linearize_page(
-                    page_png,
-                    prompt_version,
-                    page_number=page_number,
-                    total_pages=total_pages,
-                    page_type=page_type,
-                    page_plain_text=page_plain_text,
-                ),
-                "figure_contexts": self.extract_context(page_png, figure_keys, prompt_version),
+                "page_structure": page_structure,
+                "figure_contexts": pedagogical_contexts(page_structure, figure_keys),
             }
 
         prompt = self.prompt_router.get_prompt(page_type)
@@ -1013,29 +1075,20 @@ class OpenAIService:
         page_structure = data.get("page_structure")
         contexts_raw = data.get("figure_contexts", [])
         if not isinstance(page_structure, dict) or not isinstance(contexts_raw, list):
+            page_structure = self.linearize_page(
+                page_png,
+                prompt_version,
+                page_number=page_number,
+                total_pages=total_pages,
+                page_type=page_type,
+                page_plain_text=page_plain_text,
+            )
             return {
-                "page_structure": self.linearize_page(
-                    page_png,
-                    prompt_version,
-                    page_number=page_number,
-                    total_pages=total_pages,
-                    page_type=page_type,
-                    page_plain_text=page_plain_text,
-                ),
-                "figure_contexts": self.extract_context(page_png, figure_keys, prompt_version),
+                "page_structure": page_structure,
+                "figure_contexts": pedagogical_contexts(page_structure, figure_keys),
             }
 
-        contexts: Dict[str, str] = {}
-        for item in contexts_raw:
-            if not isinstance(item, dict):
-                continue
-            key = str(item.get("figure_key", "")).strip()
-            if key:
-                contexts[key] = str(item.get("context", ""))
-        for key in figure_keys:
-            contexts.setdefault(key, "")
-
-        pdf_char_count = len((page_plain_text or "").strip())
+        pdf_char_count = pdf_text_char_count(page_plain_text)
         page_structure = self._recover_if_incomplete(
             page_png,
             content,
@@ -1044,6 +1097,7 @@ class OpenAIService:
             page_plain_text=page_plain_text,
             pdf_char_count=pdf_char_count,
             base_prompt=prompt,
+            page_type=page_type,
         )
 
         self._apply_page_metadata(page_structure, page_type, prompt_version)
@@ -1053,11 +1107,15 @@ class OpenAIService:
             page_structure,
             page_plain_text,
             page_number=page_number,
+            rules_prompt=prompt,
         )
         cleaned = omit_image_credits(page_structure)
         if isinstance(cleaned, dict):
             page_structure = cleaned
-        return {"page_structure": page_structure, "figure_contexts": contexts}
+        return {
+            "page_structure": page_structure,
+            "figure_contexts": pedagogical_contexts(page_structure, figure_keys),
+        }
 
     def _resolve_linearization(
         self,
@@ -1103,7 +1161,7 @@ class OpenAIService:
         if self.literario and not self.miolo_only and page_type:
             data["tipo_pagina"] = page_type
         else:
-            data.setdefault("tipo_pagina", page_type)
+            data["tipo_pagina"] = resolve_final_page_type(page_type, data.get("tipo_pagina"))
         data["prompt_version"] = prompt_version
 
     def _ask_vision(

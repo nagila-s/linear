@@ -20,12 +20,14 @@ Campo "pagina": número inteiro impresso no livro, ou "[sem página]" se não es
     {
       "tipo": "sumario",
       "itens": [
-        { "nivel": 1, "texto": "Unidade 1 — Um novo lugar para viver", "pagina": 12 },
-        { "nivel": 2, "texto": "Capítulo 1 — As migrações humanas", "pagina": 14 },
+        { "nivel": 1, "texto": "Unidade 1\nUm novo lugar para viver", "pagina": 12 },
+        { "nivel": 2, "texto": "Capítulo 1\nAs migrações humanas", "pagina": 14 },
         { "nivel": 3, "texto": "Migrações hoje", "pagina": 15 }
       ]
     }
   ]
 }
+
+Texto de cada item: quando o título tiver partes separadas (rótulo, número e nome), use um separador (travessão, ponto, marcador) só se estiver impresso; sem separador impresso, una as partes com \n. Não transcreva os pontilhados que ligam o título ao número da página.
 
 Os valores de "nivel" seguem a hierarquia de titulo_1 a titulo_5.

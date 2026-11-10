@@ -159,7 +159,36 @@ def strip_image_credits(text: str) -> str:
     return cleaned.strip()
 
 
+# Só bancos de imagem: dentro da legenda é o único crédito que se reconhece pelo texto.
+_BANK_RE = re.compile(
+    r"\b(?:shutterstock|getty(?:\s+images)?|alamy|istock(?:photo)?|adobe\s+stock|dreamstime|123rf)\b",
+    re.IGNORECASE,
+)
+
+
+def strip_bank_credits(text: str) -> str:
+    """Versão para a legenda: remove só créditos com banco de imagens.
+
+    Acervo, coleção ou instituição impressos na legenda ("MARC FERREZ/ACERVO INSTITUTO
+    MOREIRA SALLES") fazem parte dela e ficam. Crédito e legenda se distinguem pela
+    posição na página, que o texto não mostra; por isso aqui só sai o que é certamente
+    crédito.
+    """
+    if not text:
+        return text
+    cleaned = text
+    for start, end in reversed(_slash_credit_spans(cleaned)):
+        if _BANK_RE.search(cleaned[start:end]):
+            cleaned = cleaned[:start] + " " + cleaned[end:]
+    cleaned = _BANK_RE.sub(" ", cleaned)
+    cleaned = _SPACE_BEFORE_PUNCT_RE.sub(r"\1", cleaned)
+    cleaned = _WS_RE.sub(" ", cleaned)
+    return cleaned.strip()
+
+
 def _clean_text_value(key: str, value: str) -> str | None:
+    if key == "legenda":
+        return strip_bank_credits(value)
     if is_image_credit(value):
         return None if key == "fonte" else ""
     cleaned = strip_image_credits(value)

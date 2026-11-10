@@ -16,17 +16,20 @@ Exemplo (JSON válido):
 - Retorne apenas JSON válido, sem markdown.
 - Números de página impressos no livro vão só no campo raiz "pagina".
 - Tipos de bloco permitidos: titulo_1..titulo_5, paragrafo, lista, tabela, quadro, boxe_complementar, ficha_catalografica, imagem, nota, nota_rodape, glossario, glossario_inline, atividade, fonte, link, sumario, item, subitem.
+- "item" e "subitem" existem apenas dentro de "itens[]" e "subitens[]" de listas e atividades. Nunca aparecem soltos em "conteudo" nem representam título. Títulos usam somente titulo_1..titulo_5.
+- Título composto (rótulo, número e nome em partes visualmente separadas, ex.: "Capítulo", "1", "A água") é UM único bloco de título, com as partes unidas por \n: "Capítulo 1\nA água". Não divida em dois blocos e não insira travessão ou outra pontuação que não esteja impressa.
 - Use \n para quebras de linha dentro de strings JSON.
 - Página em duas colunas: leia coluna esquerda inteira e depois a direita (ou siga a numeração das questões). Nunca ignore uma coluna.
-- Citações/excertos com aspas tipográficas ou aspas gráficas grandes: transcreva o texto por extenso (tipo "titulo_4" + "fonte" se houver). Nunca omita nem resuma.
+- Textos de terceiros e citações com aspas tipográficas ou aspas gráficas grandes: transcreva por extenso. O título impresso do texto, se houver, vai em "titulo_4"; o corpo vai em "paragrafo" (\n nas quebras de verso); depois, "fonte" se houver. Nunca omita nem resuma.
 - "conteudo" não pode ficar vazio se a página tiver texto legível.
 
 [IMAGENS]
 - Use tipo "imagem" com id sequencial por página: fig1, fig2…
 - Nunca descreva o conteúdo visual. O campo "descricao" é sempre "[imagem presente]".
-- O campo "contexto_pedagogico" deve ser preenchido APENAS quando houver uma referência explícita e identificável no texto ou na atividade da página — uma menção direta à imagem ou uma questão que depende dela.
+- O campo "contexto_pedagogico" é preenchido SOMENTE quando houver na página uma pergunta, instrução ou texto que dependa de um detalhe da imagem (ex.: "De que cor é a camiseta das crianças?"). Copie literalmente esse trecho; não resuma nem escreva sobre a menção. Uma simples menção à imagem ("observe a imagem") não basta.
 - Quando não houver referência identificável, use null. Nunca escreva explicações sobre a ausência de contexto, como "figura não identificável" ou "não há referência explícita". O valor deve ser null e ponto.
 
 [FONTES]
-- Use tipo "fonte" apenas para referências bibliográficas completas: Autor. Título. Editora, Ano.
-- Créditos de imagem nunca entram em nenhum campo (nem "fonte", nem "legenda", nem "texto"): fotógrafo, agência, "Nome/Banco", bancos (Shutterstock, Getty, Alamy, iStock) e linhas como "Acervo da editora".
+- "fonte" é a referência de onde veio um texto, documento, dado ou obra reproduzida (autor, obra, editora, instituição, coleção ou acervo, periódico, URL, data), completa ou parcial, transcrita como está impressa. Ex.: "FERREZ, Marc. Coleção Instituto Moreira Salles, 1906.". Toda fonte, inclusive a de imagem, é um bloco "fonte" logo após o elemento ao qual pertence; o bloco "imagem" não tem campo "fonte".
+- Créditos de imagem nunca entram em nenhum campo (nem "fonte", nem "legenda", nem "texto"). Crédito é o texto pequeno AO LADO da imagem (muitas vezes na vertical), separado da legenda, em geral "Nome/Agência" ou "Nome/Banco" (ex.: "João Silva/Shutterstock"), inclusive bancos de imagem sozinhos e "Acervo da editora" nessa posição.
+- O texto logo ABAIXO da imagem, com a mesma fonte da legenda, é legenda e é mantido no campo "legenda", mesmo que traga acervo, coleção ou instituição.

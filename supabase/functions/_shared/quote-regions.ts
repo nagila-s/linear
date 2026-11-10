@@ -16,14 +16,6 @@ const QUOTE_PAIRS: Record<string, string> = {
 };
 const QUOTE_CHARS = new Set([...Object.keys(QUOTE_PAIRS), ...Object.values(QUOTE_PAIRS)]);
 const MIN_QUOTE_CHARS = 40;
-const DIDACTIC_TIPOS = new Set([
-  "atividade",
-  "questao",
-  "quadro",
-  "boxe",
-  "boxe_complementar",
-  "tabela",
-]);
 
 export function collapseQuotes(text: string): string {
   let s = (text || "").replace(/\u00ad/g, "");
@@ -82,23 +74,8 @@ function quoteRegionPresent(region: string, editorial: string): boolean {
   return false;
 }
 
-function blockTipo(literary: boolean, page: Record<string, unknown>): string {
-  if (literary) return "paragrafo";
-  const tipos: string[] = [];
-  const walk = (n: unknown): void => {
-    if (Array.isArray(n)) {
-      for (const item of n) walk(item);
-      return;
-    }
-    if (!n || typeof n !== "object") return;
-    const obj = n as Record<string, unknown>;
-    if (typeof obj.tipo === "string" && obj.tipo.trim()) tipos.push(obj.tipo.trim());
-    for (const value of Object.values(obj)) walk(value);
-  };
-  walk(page);
-  if (tipos.some((t) => DIDACTIC_TIPOS.has(t))) return "titulo_4";
-  return "titulo_4";
-}
+// Citação restaurada é corpo de texto: "paragrafo". titulo_4 é só o título do texto de terceiro.
+const RESTORED_QUOTE_TIPO = "paragrafo";
 
 function insertIndex(
   conteudo: unknown[],
@@ -137,7 +114,7 @@ export function restoreMissingQuoteRegions(
   const missing = regions.filter((region) => !quoteRegionPresent(region, editorial));
   if (!missing.length) return pageStructure;
 
-  const tipo = blockTipo(Boolean(options.literary), pageStructure);
+  const tipo = RESTORED_QUOTE_TIPO;
   const out = [...conteudo];
   const pdf = options.pdfText || "";
   for (const region of missing) {

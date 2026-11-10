@@ -4,6 +4,8 @@ const AGENCY_RE =
   /\b(?:shutterstock|getty(?:\s+images)?|alamy|istock(?:photo)?|adobe\s+stock|dreamstime|123rf|acervo\s+da\s+editora|acervo\s+pessoal|arquivo\s+da\s+editora)\b/i;
 const LABEL_RE = /(?:foto|fotografia|cr[eé]ditos?)\s*:\s*[A-ZÁÉÍÓÚÂÊÔÃÕÇ][^.\n]{1,70}/gi;
 const YEAR_RE = /\b(?:19|20)\d{2}\b/;
+// Só bancos de imagem: dentro da legenda é o único crédito que se reconhece pelo texto.
+const BANK_RE = /\b(?:shutterstock|getty(?:\s+images)?|alamy|istock(?:photo)?|adobe\s+stock|dreamstime|123rf)\b/i;
 
 const TEXT_KEYS = new Set([
   "texto",
@@ -84,7 +86,7 @@ function wordsAfter(text: string, start: number, limit: number): number | null {
   return count ? end : null;
 }
 
-function stripSlashCredits(text: string): string {
+function stripSlashCredits(text: string, onlyBanks = false): string {
   const cuts: Array<[number, number]> = [];
   for (let i = 0; i < text.length; i += 1) {
     if (text[i] !== "/") continue;
@@ -93,7 +95,7 @@ function stripSlashCredits(text: string): string {
     const rightEnd = wordsAfter(text, i + 1, Math.max(left.count, 2));
     if (rightEnd == null) continue;
     const fragment = text.slice(left.start, rightEnd);
-    if (isSlashCredit(fragment)) cuts.push([left.start, rightEnd]);
+    if (isSlashCredit(fragment) && (!onlyBanks || BANK_RE.test(fragment))) cuts.push([left.start, rightEnd]);
   }
   let out = text;
   for (const [start, end] of cuts.reverse()) out = `${out.slice(0, start)} ${out.slice(end)}`;
@@ -105,6 +107,16 @@ export function stripImageCredits(text: string): string {
   return stripSlashCredits(text)
     .replace(AGENCY_RE, " ")
     .replace(LABEL_RE, " ")
+    .replace(/\s+([,.;:!?])/g, "$1")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+/** Legenda: remove só créditos com banco de imagens; acervo, coleção e instituição ficam. */
+export function stripBankCredits(text: string): string {
+  if (!text) return text;
+  return stripSlashCredits(text, true)
+    .replace(new RegExp(BANK_RE.source, "gi"), " ")
     .replace(/\s+([,.;:!?])/g, "$1")
     .replace(/[ \t]{2,}/g, " ")
     .trim();
@@ -139,7 +151,9 @@ export function omitImageCredits(node: unknown): unknown {
   if (!node || typeof node !== "object") return node;
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
-    if (TEXT_KEYS.has(key) && typeof value === "string") {
+    if (key === "legenda" && typeof value === "string") {
+      out[key] = stripBankCredits(value);
+    } else if (TEXT_KEYS.has(key) && typeof value === "string") {
       if (isImageCredit(value) || (key === "fonte" && !stripImageCredits(value))) {
         out[key] = key === "fonte" ? null : "";
       } else {

@@ -1,5 +1,5 @@
 Você está lendo a página de referências bibliográficas de um livro didático.
-Registre o título da seção e cada referência como um parágrafo separado, preservando a formatação original (autor, título, editora, ano, página).
+Registre o título da seção e cada referência como um bloco "fonte" separado, preservando a formatação original (autor, título, editora, ano, página).
 
 {{SHARED_RULES}}
 

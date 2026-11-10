@@ -17,9 +17,8 @@ _QUOTE_PAIRS: dict[str, str] = {
 _QUOTE_CHARS = frozenset(_QUOTE_PAIRS.keys()) | frozenset(_QUOTE_PAIRS.values())
 _WS_RE = re.compile(r"\s+")
 MIN_QUOTE_CHARS = 40
-_DIDACTIC_TIPOS = frozenset(
-    {"atividade", "questao", "quadro", "boxe", "boxe_complementar", "tabela"}
-)
+# Citação restaurada é corpo de texto: "paragrafo". titulo_4 é só o título do texto de terceiro.
+_RESTORED_QUOTE_TIPO = "paragrafo"
 
 
 def collapse_quotes(text: str) -> str:
@@ -81,30 +80,6 @@ def quote_region_present(region: str, editorial: str) -> bool:
     return False
 
 
-def _block_tipo(*, literary: bool, page_structure: dict[str, Any]) -> str:
-    if literary:
-        return "paragrafo"
-    tipos: list[str] = []
-
-    def walk(node: Any) -> None:
-        if isinstance(node, dict):
-            tipo = node.get("tipo")
-            if isinstance(tipo, str) and tipo.strip():
-                tipos.append(tipo.strip())
-            for value in node.values():
-                walk(value)
-        elif isinstance(node, list):
-            for item in node:
-                walk(item)
-
-    walk(page_structure)
-    if any(t in _DIDACTIC_TIPOS for t in tipos):
-        return "titulo_4"
-    if "titulo_4" in tipos:
-        return "titulo_4"
-    return "titulo_4"
-
-
 def _insert_index(conteudo: list[Any], region: str, pdf_text: str) -> int:
     pdf_flat = collapse_quotes(pdf_text)
     needle = collapse_quotes(region)[:48]
@@ -141,7 +116,7 @@ def restore_missing_quote_regions(
     if not missing:
         return page_structure
 
-    tipo = _block_tipo(literary=literary, page_structure=page_structure)
+    tipo = _RESTORED_QUOTE_TIPO
     out = list(conteudo)
     acc_editorial = editorial
     pdf = pdf_text or ""
