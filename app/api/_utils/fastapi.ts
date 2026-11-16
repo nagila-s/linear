@@ -18,8 +18,20 @@ export function fastApiUrl(path: string): string {
   return `${resolveFastApiOrigin()}${API_PREFIX}${normalized}`;
 }
 
+/** Chave compartilhada com a API (LINEAR_API_KEY). Só no servidor: nunca use NEXT_PUBLIC_. */
+function fastApiKey(): string | undefined {
+  const key = process.env.LINEAR_API_KEY?.trim();
+  if (!key && process.env.NODE_ENV === "production") {
+    throw new Error("LINEAR_API_KEY não configurada. Defina a mesma chave na Vercel e na API.");
+  }
+  return key || undefined;
+}
+
 export async function fetchFastApi(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(fastApiUrl(path), init);
+  const headers = new Headers(init?.headers);
+  const key = fastApiKey();
+  if (key) headers.set("X-Linear-Api-Key", key);
+  return fetch(fastApiUrl(path), { ...init, headers });
 }
 
 export function jsonError(message: string, status = 500): NextResponse {

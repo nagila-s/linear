@@ -3,9 +3,10 @@ import json
 from uuid import UUID
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.api.auth import auth_disabled_for_dev, require_api_key
 from src.core.config import get_settings
 from src.core.errors import AppError, ValidationError
 from src.core.logging import configure_logging
@@ -42,7 +43,18 @@ SECONDS_PER_PAGE = 25
 QUEUE_CALIBRATION_NOTE = "Estimativa com base em testes anteriores: 25 s por página."
 
 settings = get_settings()
-app = FastAPI(title=settings.app_name, version="0.1.0")
+_docs_enabled = settings.app_env == "dev"
+app = FastAPI(
+    title=settings.app_name,
+    version="0.1.0",
+    dependencies=[Depends(require_api_key)],
+    # /docs e /openapi.json não passam pela dependência; ficam só no dev.
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
+)
+if auth_disabled_for_dev():
+    logger.warning("LINEAR_API_KEY vazia: API aberta porque APP_ENV=dev.")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list or ["*"],

@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     app_port: int = 8000
     api_prefix: str = "/api/v1"
     cors_origins: str = "*"
+    # Chave compartilhada com o BFF (header X-Linear-Api-Key). Vazia só vale em APP_ENV=dev.
+    linear_api_key: str = Field(default="")
 
     supabase_url: str = Field(default="")
     supabase_service_role_key: str = Field(default="")
